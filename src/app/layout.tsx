@@ -1,8 +1,9 @@
-import { ClerkProvider } from '@clerk/nextjs';
-import { ptBR } from '@clerk/localizations';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import { ThemeProvider } from '@/components/theme-provider';
+import { Toaster } from 'sonner';
+import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
+import { cookies } from 'next/headers';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -11,35 +12,23 @@ export const metadata = {
   description: 'Crie uma carteira global de ETFs alinhada ao seu perfil de risco em até 5 minutos.',
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  // Inicializar o Supabase para o lado do servidor
+  const supabase = createServerComponentClient({ cookies });
+  
   return (
-    <ClerkProvider 
-      localization={ptBR}
-      appearance={{
-        layout: {
-          logoPlacement: 'inside',
-          logoImageUrl: '/logo.png',
-        },
-        variables: {
-          colorPrimary: '#0066FF',
-        },
-      }}
-      redirectUrl="/dashboard"
-      signInUrl="/(auth)/sign-in"
-      signUpUrl="/(auth)/sign-up"
-    >
-      <html lang="pt-BR" suppressHydrationWarning>
-        <head />
-        <body className={inter.className}>
-          <ThemeProvider>
-            {children}
-          </ThemeProvider>
-        </body>
-      </html>
-    </ClerkProvider>
+    <html lang="pt-BR" suppressHydrationWarning>
+      <head />
+      <body className={inter.className}>
+        <ThemeProvider>
+          {children}
+          <Toaster position="top-right" />
+        </ThemeProvider>
+      </body>
+    </html>
   );
 }
