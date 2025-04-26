@@ -12,9 +12,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 type Portfolio = {
   weights: Record<string, number>;
   metrics: {
-    return: number;
-    volatility: number;
-    sharpe: number;
+    expectedReturn: number;
+    risk: number;
+    sharpeRatio: number;
   };
   rebalance_date: string;
 };
@@ -34,8 +34,8 @@ export default function PortfolioPage() {
     const fetchPortfolio = async () => {
       try {
         setLoading(true);
+        setError(null);
         
-        // Chamar a API de otimização
         const response = await fetch('/api/optimize', {
           method: 'POST',
           headers: {
@@ -45,14 +45,20 @@ export default function PortfolioPage() {
         });
         
         if (!response.ok) {
-          throw new Error('Falha ao obter carteira otimizada');
+          console.error(`Erro ao obter carteira otimizada: ${response.status}`);
+          setError('Falha ao obter carteira otimizada. Por favor, tente novamente mais tarde.');
+          return;
         }
         
         const data = await response.json();
-        setPortfolio(data);
-        
-        // Simular explicação gerada por IA (na implementação real, seria chamada a API OpenAI)
-        setExplanation(generateExplanation(data, parseInt(riskScore)));
+        if (data && typeof data === 'object' && 'weights' in data && 'metrics' in data) {
+          setPortfolio(data as Portfolio);
+          
+          // Simular explicação gerada por IA
+          setExplanation(generateExplanation(data as Portfolio, parseInt(riskScore)));
+        } else {
+          setError('Dados inválidos recebidos do servidor.');
+        }
       } catch (err) {
         setError('Erro ao carregar carteira. Por favor, tente novamente.');
         console.error(err);
@@ -121,7 +127,7 @@ ${
   'A carteira prioriza ETFs com maior liquidez e histórico consistente de desempenho.'
 }
 
-O retorno anualizado esperado é de ${(portfolio.metrics.return * 100).toFixed(2)}%, com volatilidade de ${(portfolio.metrics.volatility * 100).toFixed(2)}% e índice Sharpe de ${portfolio.metrics.sharpe.toFixed(2)}.
+O retorno anualizado esperado é de ${(portfolio.metrics.expectedReturn * 100).toFixed(2)}%, com volatilidade de ${(portfolio.metrics.risk * 100).toFixed(2)}% e índice Sharpe de ${portfolio.metrics.sharpeRatio.toFixed(2)}.
 
 Recomendamos revisar e rebalancear sua carteira em ${new Date(portfolio.rebalance_date).toLocaleDateString('pt-BR')}, ou antes caso ocorra uma queda superior a 15% no valor total.`;
   };
@@ -180,7 +186,7 @@ Recomendamos revisar e rebalancear sua carteira em ${new Date(portfolio.rebalanc
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  {(portfolio.metrics.return * 100).toFixed(2)}%
+                  {(portfolio.metrics.expectedReturn * 100).toFixed(2)}%
                 </div>
               </CardContent>
             </Card>
@@ -192,7 +198,7 @@ Recomendamos revisar e rebalancear sua carteira em ${new Date(portfolio.rebalanc
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  {(portfolio.metrics.volatility * 100).toFixed(2)}%
+                  {(portfolio.metrics.risk * 100).toFixed(2)}%
                 </div>
               </CardContent>
             </Card>
@@ -203,7 +209,7 @@ Recomendamos revisar e rebalancear sua carteira em ${new Date(portfolio.rebalanc
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{portfolio.metrics.sharpe.toFixed(2)}</div>
+                <div className="text-2xl font-bold">{portfolio.metrics.sharpeRatio.toFixed(2)}</div>
               </CardContent>
             </Card>
           </div>
