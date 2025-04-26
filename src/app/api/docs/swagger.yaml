@@ -1,0 +1,280 @@
+openapi: 3.0.0
+info:
+  title: Robo-ETF API
+  description: API para o serviço Robo-ETF - Carteira Inteligente de ETFs
+  version: 1.0.0
+servers:
+  - url: https://roboetf.com.br/api
+    description: Servidor de produção
+  - url: http://localhost:3000/api
+    description: Servidor de desenvolvimento
+
+paths:
+  /optimize:
+    post:
+      summary: Otimiza uma carteira de ETFs
+      description: Cria uma carteira otimizada de ETFs com base no perfil de risco do usuário
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - riskScore
+              properties:
+                riskScore:
+                  type: integer
+                  description: Perfil de risco do usuário (1-5)
+                  minimum: 1
+                  maximum: 5
+      responses:
+        '200':
+          description: Carteira otimizada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  weights:
+                    type: object
+                    description: Pesos de cada ETF na carteira
+                    additionalProperties:
+                      type: number
+                  metrics:
+                    type: object
+                    properties:
+                      return:
+                        type: number
+                        description: Retorno anualizado esperado
+                      volatility:
+                        type: number
+                        description: Volatilidade anualizada
+                      sharpe:
+                        type: number
+                        description: Índice Sharpe
+                  rebalance_date:
+                    type: string
+                    format: date
+                    description: Data recomendada para rebalanceamento
+        '400':
+          description: Parâmetros inválidos
+        '500':
+          description: Erro interno do servidor
+
+  /explain:
+    post:
+      summary: Gera explicação da carteira
+      description: Utiliza IA para gerar uma explicação detalhada da carteira em português
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - portfolio
+                - riskScore
+              properties:
+                portfolio:
+                  type: object
+                  properties:
+                    weights:
+                      type: object
+                      additionalProperties:
+                        type: number
+                    metrics:
+                      type: object
+                      properties:
+                        return:
+                          type: number
+                        volatility:
+                          type: number
+                        sharpe:
+                          type: number
+                    rebalance_date:
+                      type: string
+                      format: date
+                riskScore:
+                  type: integer
+                  minimum: 1
+                  maximum: 5
+      responses:
+        '200':
+          description: Explicação gerada com sucesso
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  explanation:
+                    type: string
+                    description: Explicação detalhada da carteira em português
+        '400':
+          description: Parâmetros inválidos
+        '500':
+          description: Erro interno do servidor
+
+  /pdf:
+    post:
+      summary: Gera PDF da carteira
+      description: Cria um relatório PDF detalhado da carteira
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - portfolio
+                - riskScore
+                - explanation
+              properties:
+                portfolio:
+                  type: object
+                  properties:
+                    weights:
+                      type: object
+                      additionalProperties:
+                        type: number
+                    metrics:
+                      type: object
+                      properties:
+                        return:
+                          type: number
+                        volatility:
+                          type: number
+                        sharpe:
+                          type: number
+                    rebalance_date:
+                      type: string
+                      format: date
+                riskScore:
+                  type: integer
+                  minimum: 1
+                  maximum: 5
+                explanation:
+                  type: string
+      responses:
+        '200':
+          description: PDF gerado com sucesso
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  url:
+                    type: string
+                    description: URL para download do PDF
+        '401':
+          description: Não autorizado
+        '400':
+          description: Parâmetros inválidos
+        '500':
+          description: Erro interno do servidor
+
+  /subscription:
+    post:
+      summary: Cria uma assinatura
+      description: Cria uma assinatura premium no Mercado Pago
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Assinatura criada com sucesso
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  subscription_id:
+                    type: string
+                  init_point:
+                    type: string
+                    description: URL para página de pagamento
+        '401':
+          description: Não autorizado
+        '500':
+          description: Erro interno do servidor
+
+  /subscription/cancel:
+    post:
+      summary: Cancela uma assinatura
+      description: Cancela a assinatura premium do usuário
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Assinatura cancelada com sucesso
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        '401':
+          description: Não autorizado
+        '500':
+          description: Erro interno do servidor
+
+  /mercadopago/webhook:
+    post:
+      summary: Webhook do Mercado Pago
+      description: Recebe notificações de pagamento e assinatura do Mercado Pago
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Webhook processado com sucesso
+        '500':
+          description: Erro interno do servidor
+
+  /cron/rebalance:
+    get:
+      summary: Executa rebalanceamento automático
+      description: Verifica carteiras que precisam de rebalanceamento e processa
+      security:
+        - apiKeyAuth: []
+      responses:
+        '200':
+          description: Rebalanceamento executado com sucesso
+        '401':
+          description: Não autorizado
+        '500':
+          description: Erro interno do servidor
+
+  /cron/drawdown:
+    get:
+      summary: Verifica drawdown significativo
+      description: Verifica carteiras com queda superior a 15% e envia alertas
+      security:
+        - apiKeyAuth: []
+      responses:
+        '200':
+          description: Verificação executada com sucesso
+        '401':
+          description: Não autorizado
+        '500':
+          description: Erro interno do servidor
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: x-api-key
