@@ -29,8 +29,8 @@ export default function RootLayout({
         },
       }}
       redirectUrl="/dashboard"
-      signInUrl="/sign-in"
-      signUpUrl="/sign-up"
+      signInUrl="/(auth)/sign-in"
+      signUpUrl="/(auth)/sign-up"
     >
       <html lang="pt-BR" suppressHydrationWarning>
         <head />

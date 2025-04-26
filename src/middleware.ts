@@ -5,8 +5,8 @@ const publicRoutes = createRouteMatcher([
   '/',
   '/api/mercadopago',
   '/api/docs',
-  '/sign-in(.*)',  // Padrão catchall para sign-in
-  '/sign-up(.*)',  // Padrão catchall para sign-up
+  '/(auth)/sign-in(.*)',  // Padrão catchall para sign-in com grupo (auth)
+  '/(auth)/sign-up(.*)',  // Padrão catchall para sign-up com grupo (auth)
   '/onboarding',
 ]);
 
