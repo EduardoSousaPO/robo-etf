@@ -102,19 +102,58 @@ export async function getHistoricalPrices(
   return response.historical;
 }
 
+// Função de fallback com ETFs populares
+function getFallbackETFs(): ETF[] {
+  return [
+    { symbol: 'VTI', name: 'Vanguard Total Stock Market ETF', price: 250.0, exchange: 'NYSE', exchangeShortName: 'NYSE', type: 'ETF' },
+    { symbol: 'VOO', name: 'Vanguard S&P 500 ETF', price: 430.0, exchange: 'NYSE', exchangeShortName: 'NYSE', type: 'ETF' },
+    { symbol: 'QQQ', name: 'Invesco QQQ Trust', price: 410.0, exchange: 'NASDAQ', exchangeShortName: 'NASDAQ', type: 'ETF' },
+    { symbol: 'VXUS', name: 'Vanguard Total International Stock ETF', price: 60.0, exchange: 'NASDAQ', exchangeShortName: 'NASDAQ', type: 'ETF' },
+    { symbol: 'VEA', name: 'Vanguard FTSE Developed Markets ETF', price: 48.0, exchange: 'NYSE', exchangeShortName: 'NYSE', type: 'ETF' },
+    { symbol: 'VWO', name: 'Vanguard FTSE Emerging Markets ETF', price: 42.0, exchange: 'NYSE', exchangeShortName: 'NYSE', type: 'ETF' },
+    { symbol: 'BND', name: 'Vanguard Total Bond Market ETF', price: 72.0, exchange: 'NASDAQ', exchangeShortName: 'NASDAQ', type: 'ETF' },
+    { symbol: 'BNDX', name: 'Vanguard Total International Bond ETF', price: 48.0, exchange: 'NASDAQ', exchangeShortName: 'NASDAQ', type: 'ETF' },
+    { symbol: 'VNQ', name: 'Vanguard Real Estate ETF', price: 85.0, exchange: 'NYSE', exchangeShortName: 'NYSE', type: 'ETF' },
+    { symbol: 'VUSA-IE', name: 'Vanguard S&P 500 UCITS ETF', price: 85.0, exchange: 'LSE', exchangeShortName: 'LSE', type: 'ETF' },
+    { symbol: 'EQQQ-IE', name: 'Invesco NASDAQ-100 UCITS ETF', price: 370.0, exchange: 'LSE', exchangeShortName: 'LSE', type: 'ETF' },
+    { symbol: 'CSPX-IE', name: 'iShares Core S&P 500 UCITS ETF', price: 480.0, exchange: 'LSE', exchangeShortName: 'LSE', type: 'ETF' }
+  ];
+}
+
 // Função para obter ETFs líquidos (volume > 10M/dia)
 export async function getLiquidETFs(): Promise<ETF[]> {
-  const etfs = await getETFList();
-  const symbols = etfs.map(etf => etf.symbol).slice(0, 100); // Limitar para não sobrecarregar a API
-  
-  const quotes = await getETFQuotes(symbols);
-  const liquidETFs = quotes
-    .filter(quote => quote.volume > 10000000) // Volume > 10M
-    .map(quote => {
-      const etfInfo = etfs.find(etf => etf.symbol === quote.symbol);
-      return etfInfo;
-    })
-    .filter(Boolean) as ETF[];
-  
-  return liquidETFs.slice(0, 80); // Retornar os 80 ETFs mais líquidos
+  try {
+    const etfs = await getETFList();
+    
+    // Se a lista estiver vazia, usar lista de fallback
+    if (!etfs || etfs.length === 0) {
+      return getFallbackETFs();
+    }
+    
+    const symbols = etfs.map(etf => etf.symbol).slice(0, 100); // Limitar para não sobrecarregar a API
+    
+    try {
+      const quotes = await getETFQuotes(symbols);
+      const liquidETFs = quotes
+        .filter(quote => quote.volume > 10000000) // Volume > 10M
+        .map(quote => {
+          const etfInfo = etfs.find(etf => etf.symbol === quote.symbol);
+          return etfInfo;
+        })
+        .filter(Boolean) as ETF[];
+      
+      // Se não encontrar ETFs líquidos suficientes, usar fallback
+      if (liquidETFs.length < 10) {
+        return getFallbackETFs();
+      }
+      
+      return liquidETFs.slice(0, 80); // Retornar os 80 ETFs mais líquidos
+    } catch (error) {
+      console.error('Erro ao obter cotações:', error);
+      return getFallbackETFs();
+    }
+  } catch (error) {
+    console.error('Erro ao obter lista de ETFs:', error);
+    return getFallbackETFs();
+  }
 }
