@@ -1,10 +1,30 @@
 import Link from 'next/link';
-import { UserButton } from '@clerk/nextjs';
-import { SignInButton, SignUpButton } from '@clerk/nextjs';
-import { currentUser } from '@clerk/nextjs/server';
+import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
+import { cookies } from 'next/headers';
+import { UserButton } from './user-button';
+import { SignInButton, SignUpButton } from './auth-buttons';
 
 export async function Navbar() {
-  const user = await currentUser();
+  // Verificar se as variáveis de ambiente do Supabase estão configuradas
+  const hasSupabaseConfig = 
+    process.env.NEXT_PUBLIC_SUPABASE_URL && 
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  
+  // Inicializar usuário como null por padrão
+  let user = null;
+  
+  try {
+    // Criar cliente Supabase e obter sessão apenas se as variáveis estiverem definidas
+    if (hasSupabaseConfig) {
+      const supabase = createServerComponentClient({ cookies });
+      const { data: { session } } = await supabase.auth.getSession();
+      user = session?.user;
+    } else {
+      console.warn('Variáveis de ambiente do Supabase não configuradas. Autenticação desativada na Navbar.');
+    }
+  } catch (error) {
+    console.error('Erro ao verificar autenticação na Navbar:', error);
+  }
   
   return (
     <header className="border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-slate-900">
@@ -36,7 +56,7 @@ export async function Navbar() {
         
         <div className="flex items-center space-x-4">
           {user ? (
-            <UserButton />
+            <UserButton user={user} />
           ) : (
             <div className="flex items-center space-x-2">
               <SignInButton mode="modal">

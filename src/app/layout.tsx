@@ -17,8 +17,22 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // Inicializar o Supabase para o lado do servidor
-  const supabase = createServerComponentClient({ cookies });
+  // Verificar se as variáveis de ambiente do Supabase estão configuradas
+  const hasSupabaseConfig = 
+    process.env.NEXT_PUBLIC_SUPABASE_URL && 
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  
+  // Inicializar o Supabase para o lado do servidor apenas se as variáveis estiverem definidas
+  let supabase;
+  try {
+    if (hasSupabaseConfig) {
+      supabase = createServerComponentClient({ cookies });
+    } else {
+      console.warn('Variáveis de ambiente do Supabase não configuradas. Autenticação pode não funcionar corretamente.');
+    }
+  } catch (error) {
+    console.error('Erro ao inicializar Supabase:', error);
+  }
   
   return (
     <html lang="pt-BR" suppressHydrationWarning>

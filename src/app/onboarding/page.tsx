@@ -1,19 +1,39 @@
-import { UserButton } from '@clerk/nextjs';
-import { currentUser } from '@clerk/nextjs/server';
+import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
+import { cookies } from 'next/headers';
+import { UserButton } from '@/components/user-button';
 import Link from 'next/link';
 
 export default async function OnboardingPage() {
-  const user = await currentUser();
+  // Verificar se as variáveis de ambiente do Supabase estão configuradas
+  const hasSupabaseConfig = 
+    process.env.NEXT_PUBLIC_SUPABASE_URL && 
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  
+  // Inicializar usuário como null por padrão
+  let user = null;
+  
+  try {
+    // Criar cliente Supabase e obter sessão apenas se as variáveis estiverem definidas
+    if (hasSupabaseConfig) {
+      const supabase = createServerComponentClient({ cookies });
+      const { data: { session } } = await supabase.auth.getSession();
+      user = session?.user;
+    } else {
+      console.warn('Variáveis de ambiente do Supabase não configuradas. Autenticação desativada na página de Onboarding.');
+    }
+  } catch (error) {
+    console.error('Erro ao verificar autenticação na página de Onboarding:', error);
+  }
   
   return (
     <div className="p-6 max-w-4xl mx-auto">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold">Bem-vindo ao Robo-ETF!</h1>
-        <UserButton />
+        {user && <UserButton user={user} />}
       </div>
       
       <div className="bg-white dark:bg-slate-800 rounded-lg shadow p-8">
-        <h2 className="text-2xl font-semibold mb-6">Vamos começar, {user?.firstName || 'Investidor'}!</h2>
+        <h2 className="text-2xl font-semibold mb-6">Vamos começar, {user?.user_metadata?.name || 'Investidor'}!</h2>
         
         <div className="space-y-6">
           <div className="border-l-4 border-blue-500 pl-4 py-2">
