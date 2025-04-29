@@ -7,17 +7,25 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
 
 // Tipo para a carteira otimizada
 type Portfolio = {
   weights: Record<string, number>;
   metrics: {
-    expectedReturn: number;
-    risk: number;
-    sharpeRatio: number;
+    return: number;
+    volatility: number;
+    sharpe: number;
   };
   rebalance_date: string;
 };
+
+// Cores para o gráfico de pizza
+const COLORS = [
+  '#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', 
+  '#82CA9D', '#FF6B6B', '#6A7FDB', '#9CCC65', '#FFD54F',
+  '#4DB6AC', '#7986CB', '#A1887F', '#90A4AE', '#BA68C8'
+];
 
 export default function PortfolioPage() {
   const searchParams = useSearchParams();
@@ -28,6 +36,7 @@ export default function PortfolioPage() {
   const [error, setError] = useState<string | null>(null);
   const [explanationOpen, setExplanationOpen] = useState(false);
   const [explanation, setExplanation] = useState('');
+  const [loadingExplanation, setLoadingExplanation] = useState(false);
   
   // Buscar carteira otimizada
   useEffect(() => {
@@ -53,9 +62,6 @@ export default function PortfolioPage() {
         const data = await response.json();
         if (data && typeof data === 'object' && 'weights' in data && 'metrics' in data) {
           setPortfolio(data as Portfolio);
-          
-          // Simular explicação gerada por IA
-          setExplanation(generateExplanation(data as Portfolio, parseInt(riskScore)));
         } else {
           setError('Dados inválidos recebidos do servidor.');
         }
@@ -93,8 +99,55 @@ export default function PortfolioPage() {
     link.click();
   };
   
-  // Função para simular explicação gerada por IA
-  const generateExplanation = (portfolio: Portfolio, riskScore: number) => {
+  // Função para obter explicação da API
+  const fetchExplanation = async () => {
+    if (!portfolio) return;
+    
+    try {
+      setLoadingExplanation(true);
+      
+      const response = await fetch('/api/explain', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          portfolio: portfolio.weights,
+          riskScore: parseInt(riskScore)
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Falha ao obter explicação');
+      }
+      
+      const data = await response.json();
+      if (data && data.explanation) {
+        setExplanation(data.explanation);
+      } else {
+        throw new Error('Dados inválidos recebidos do servidor');
+      }
+    } catch (err) {
+      console.error('Erro ao obter explicação:', err);
+      // Fallback para explicação gerada localmente
+      setExplanation(generateFallbackExplanation(portfolio, parseInt(riskScore)));
+    } finally {
+      setLoadingExplanation(false);
+    }
+  };
+  
+  // Abrir modal de explicação e buscar dados se necessário
+  const handleExplanationClick = () => {
+    setExplanationOpen(true);
+    
+    // Se ainda não temos explicação, buscar da API
+    if (!explanation && portfolio) {
+      fetchExplanation();
+    }
+  };
+  
+  // Função para gerar explicação local como fallback
+  const generateFallbackExplanation = (portfolio: Portfolio, riskScore: number) => {
     const riskProfiles = [
       'muito conservador',
       'conservador',
@@ -127,9 +180,33 @@ ${
   'A carteira prioriza ETFs com maior liquidez e histórico consistente de desempenho.'
 }
 
-O retorno anualizado esperado é de ${(portfolio.metrics.expectedReturn * 100).toFixed(2)}%, com volatilidade de ${(portfolio.metrics.risk * 100).toFixed(2)}% e índice Sharpe de ${portfolio.metrics.sharpeRatio.toFixed(2)}.
+O retorno anualizado esperado é de ${(portfolio.metrics.return * 100).toFixed(2)}%, com volatilidade de ${(portfolio.metrics.volatility * 100).toFixed(2)}% e índice Sharpe de ${portfolio.metrics.sharpe.toFixed(2)}.
 
 Recomendamos revisar e rebalancear sua carteira em ${new Date(portfolio.rebalance_date).toLocaleDateString('pt-BR')}, ou antes caso ocorra uma queda superior a 15% no valor total.`;
+  };
+  
+  // Preparar dados para o gráfico de pizza
+  const prepareChartData = () => {
+    if (!portfolio) return [];
+    
+    // Ordenar por peso e limitar a 10 ETFs para melhor visualização
+    const sortedEntries = Object.entries(portfolio.weights)
+      .sort(([, a], [, b]) => b - a);
+    
+    // Se temos mais de 10 ETFs, agrupar os menores como "Outros"
+    if (sortedEntries.length > 10) {
+      const topEntries = sortedEntries.slice(0, 9);
+      const otherEntries = sortedEntries.slice(9);
+      
+      const otherWeight = otherEntries.reduce((sum, [, weight]) => sum + weight, 0);
+      
+      return [
+        ...topEntries.map(([name, value]) => ({ name, value })),
+        { name: 'Outros', value: otherWeight }
+      ];
+    }
+    
+    return sortedEntries.map(([name, value]) => ({ name, value }));
   };
   
   // Renderizar estado de carregamento
@@ -169,7 +246,7 @@ Recomendamos revisar e rebalancear sua carteira em ${new Date(portfolio.rebalanc
           <Button variant="outline" onClick={exportCSV}>
             Exportar CSV
           </Button>
-          <Button variant="outline" onClick={() => setExplanationOpen(true)}>
+          <Button variant="outline" onClick={handleExplanationClick}>
             Explicação da Carteira
           </Button>
         </div>
@@ -186,7 +263,7 @@ Recomendamos revisar e rebalancear sua carteira em ${new Date(portfolio.rebalanc
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  {(portfolio.metrics.expectedReturn * 100).toFixed(2)}%
+                  {(portfolio.metrics.return * 100).toFixed(2)}%
                 </div>
               </CardContent>
             </Card>
@@ -198,7 +275,7 @@ Recomendamos revisar e rebalancear sua carteira em ${new Date(portfolio.rebalanc
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  {(portfolio.metrics.risk * 100).toFixed(2)}%
+                  {(portfolio.metrics.volatility * 100).toFixed(2)}%
                 </div>
               </CardContent>
             </Card>
@@ -209,7 +286,7 @@ Recomendamos revisar e rebalancear sua carteira em ${new Date(portfolio.rebalanc
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{portfolio.metrics.sharpeRatio.toFixed(2)}</div>
+                <div className="text-2xl font-bold">{portfolio.metrics.sharpe.toFixed(2)}</div>
               </CardContent>
             </Card>
           </div>
@@ -223,12 +300,29 @@ Recomendamos revisar e rebalancear sua carteira em ${new Date(portfolio.rebalanc
               <Card>
                 <CardContent className="pt-6">
                   <div className="aspect-[4/3] w-full">
-                    {/* Aqui seria implementado o gráfico de pizza com Chart.js */}
-                    <div className="flex h-full items-center justify-center">
-                      <p className="text-muted-foreground">
-                        Gráfico de alocação da carteira (implementação com Chart.js)
-                      </p>
-                    </div>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={prepareChartData()}
+                          cx="50%"
+                          cy="50%"
+                          labelLine={false}
+                          outerRadius="70%"
+                          fill="#8884d8"
+                          dataKey="value"
+                          nameKey="name"
+                          label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                        >
+                          {prepareChartData().map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip 
+                          formatter={(value: number) => `${(value * 100).toFixed(2)}%`} 
+                        />
+                        <Legend />
+                      </PieChart>
+                    </ResponsiveContainer>
                   </div>
                 </CardContent>
               </Card>
@@ -283,7 +377,17 @@ Recomendamos revisar e rebalancear sua carteira em ${new Date(portfolio.rebalanc
               <DialogHeader>
                 <DialogTitle>Explicação da Carteira</DialogTitle>
               </DialogHeader>
-              <div className="mt-4 whitespace-pre-line">{explanation}</div>
+              {loadingExplanation ? (
+                <div className="mt-4 space-y-2">
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-5/6" />
+                </div>
+              ) : (
+                <div className="mt-4 whitespace-pre-line">{explanation}</div>
+              )}
             </DialogContent>
           </Dialog>
         </>

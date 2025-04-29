@@ -1,27 +1,17 @@
 import Link from 'next/link';
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
-import { UserButton } from './user-button';
+import { createServerClient } from '@/lib/supabase-server';
+import { UserButton } from '@/components/user-button';
 import { SignInButton, SignUpButton } from './auth-buttons';
 
 export async function Navbar() {
-  // Verificar se as variáveis de ambiente do Supabase estão configuradas
-  const hasSupabaseConfig = 
-    process.env.NEXT_PUBLIC_SUPABASE_URL && 
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  
   // Inicializar usuário como null por padrão
   let user = null;
   
   try {
-    // Criar cliente Supabase e obter sessão apenas se as variáveis estiverem definidas
-    if (hasSupabaseConfig) {
-      const supabase = createServerComponentClient({ cookies });
-      const { data: { session } } = await supabase.auth.getSession();
-      user = session?.user;
-    } else {
-      console.warn('Variáveis de ambiente do Supabase não configuradas. Autenticação desativada na Navbar.');
-    }
+    // Criar cliente Supabase para servidor
+    const supabase = await createServerClient();
+    const { data: { session } } = await supabase.auth.getSession();
+    user = session?.user;
   } catch (error) {
     console.error('Erro ao verificar autenticação na Navbar:', error);
   }

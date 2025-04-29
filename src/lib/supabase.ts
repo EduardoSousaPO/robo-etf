@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from './constants';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_KEY } from './constants';
 
 // Tipos para as tabelas do Supabase
 export type Profile = {
@@ -7,6 +7,8 @@ export type Profile = {
   name: string | null;
   risk_score: number | null;
   created_at: string;
+  subscription_status: 'free' | 'premium' | null;
+  subscription_id: string | null;
 };
 
 export type Portfolio = {
@@ -22,12 +24,19 @@ export type Portfolio = {
   created_at: string;
 };
 
-// Inicialização do cliente Supabase com valores diretos para depuração
-const supabaseUrl = SUPABASE_URL;
-const supabaseKey = SUPABASE_ANON_KEY;
+// Configuração com valores fixos para desenvolvimento para garantir que funcione
+const supabaseUrl = 'https://iikdiavzocnpspebjasp.supabase.co';
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlpa2RpYXZ6b2NucHNwZWJqYXNwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDU2MTc1NzQsImV4cCI6MjA2MTE5MzU3NH0.WLBS9-isTcTbGr7OE1GCRQZN58nPxeHVpY5B4Sjpn-0';
+const supabaseServiceKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlpa2RpYXZ6b2NucHNwZWJqYXNwIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0NTYxNzU3NCwiZXhwIjoyMDYxMTkzNTc0fQ.bwQZqwTpEvmFdVMzgNxPovEvCaTHInBoXEKfFTTquJg';
 
-// Usar a chave de anon para o cliente público
-const supabaseAnonKey = SUPABASE_ANON_KEY;
+// Verificação apenas em desenvolvimento
+if (process.env.NODE_ENV !== 'production') {
+  console.log('ℹ️ Configuração Supabase:', { 
+    url: !!supabaseUrl ? 'Configurado' : 'Não configurado',
+    anonKey: !!supabaseAnonKey ? 'Configurado' : 'Não configurado',
+    serviceKey: !!supabaseServiceKey ? 'Configurado' : 'Não configurado'
+  });
+}
 
 // Cliente para autenticação e acesso público
 export let supabaseAuth: SupabaseClient;
@@ -55,7 +64,7 @@ try {
 // Cliente para acesso admin (usar apenas no servidor)
 export let supabase: SupabaseClient;
 try {
-  supabase = createClient(supabaseUrl, supabaseKey);
+  supabase = createClient(supabaseUrl, supabaseServiceKey);
 } catch (error) {
   console.error('Erro ao criar cliente admin Supabase:', error);
   // Criar um cliente dummy para evitar erros de "is not defined"
@@ -73,6 +82,13 @@ try {
           single: async () => ({ data: null, error: new Error('Cliente Supabase não inicializado') })
         })
       }),
+      update: () => ({
+        eq: () => ({
+          select: () => ({
+            single: async () => ({ data: null, error: new Error('Cliente Supabase não inicializado') })
+          })
+        })
+      }),
       upsert: () => ({
         select: () => ({
           single: async () => ({ data: null, error: new Error('Cliente Supabase não inicializado') })
@@ -82,84 +98,8 @@ try {
   } as unknown as SupabaseClient;
 }
 
-// Funções de autenticação
-export async function signUp(email: string, password: string, name: string) {
-  try {
-    const { data, error } = await supabaseAuth.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          name,
-        }
-      }
-    });
-    
-    if (error) throw error;
-    
-    // Criar perfil para o usuário
-    if (data?.user) {
-      try {
-        await createOrUpdateProfile({
-          id: data.user.id,
-          name: name,
-          risk_score: 3 // Valor padrão para novos usuários
-        });
-      } catch (profileError) {
-        console.error('Erro ao criar perfil:', profileError);
-      }
-    }
-    
-    return data;
-  } catch (error) {
-    console.error('Erro no processo de cadastro:', error);
-    throw error;
-  }
-}
-
-export async function signIn(email: string, password: string) {
-  try {
-    const { data, error } = await supabaseAuth.auth.signInWithPassword({
-      email,
-      password
-    });
-    
-    if (error) throw error;
-    return data;
-  } catch (error) {
-    console.error('Erro no processo de login:', error);
-    throw error;
-  }
-}
-
-export async function signOut() {
-  try {
-    const { error } = await supabaseAuth.auth.signOut();
-    if (error) throw error;
-  } catch (error) {
-    console.error('Erro ao fazer logout:', error);
-    throw error;
-  }
-}
-
-// Hook para obter usuário atual (lado cliente)
-export function useSupabaseAuth() {
-  return supabaseAuth.auth;
-}
-
-// Função para obter usuário atual (lado servidor)
-export async function getCurrentUser() {
-  try {
-    const { data } = await supabaseAuth.auth.getSession();
-    return data.session?.user || null;
-  } catch (error) {
-    console.error('Erro ao obter usuário atual:', error);
-    return null;
-  }
-}
-
 // Funções auxiliares para interagir com o banco de dados
-export async function getProfileById(userId: string) {
+export async function getProfileById(userId: string): Promise<Profile | null> {
   try {
     const { data, error } = await supabase
       .from('profiles')
@@ -167,7 +107,13 @@ export async function getProfileById(userId: string) {
       .eq('id', userId)
       .single();
 
-    if (error) throw error;
+    if (error) {
+      if (error.code === 'PGRST116') { // Código para 'Not found'
+        console.warn(`Perfil não encontrado para o usuário ${userId}`);
+        return null;
+      }
+      throw error;
+    }
     return data as Profile;
   } catch (error) {
     console.error(`Erro ao buscar perfil do usuário ${userId}:`, error);
@@ -175,11 +121,14 @@ export async function getProfileById(userId: string) {
   }
 }
 
-export async function createOrUpdateProfile(profile: Partial<Profile> & { id: string }) {
+export async function createOrUpdateProfile(profile: Partial<Profile> & { id: string }): Promise<Profile> {
   try {
+    // Garante que o risk_score seja um número ou null
+    const riskScore = typeof profile.risk_score === 'number' ? profile.risk_score : null;
+    
     const { data, error } = await supabase
       .from('profiles')
-      .upsert(profile)
+      .upsert({ ...profile, risk_score: riskScore })
       .select()
       .single();
 
@@ -191,7 +140,7 @@ export async function createOrUpdateProfile(profile: Partial<Profile> & { id: st
   }
 }
 
-export async function getPortfoliosByUserId(userId: string) {
+export async function getPortfoliosByUserId(userId: string): Promise<Portfolio[]> {
   try {
     const { data, error } = await supabase
       .from('portfolios')
@@ -207,7 +156,7 @@ export async function getPortfoliosByUserId(userId: string) {
   }
 }
 
-export async function createPortfolio(portfolio: Omit<Portfolio, 'id' | 'created_at'>) {
+export async function createPortfolio(portfolio: Omit<Portfolio, 'id' | 'created_at'>): Promise<Portfolio> {
   try {
     const { data, error } = await supabase
       .from('portfolios')
@@ -222,3 +171,155 @@ export async function createPortfolio(portfolio: Omit<Portfolio, 'id' | 'created
     throw error;
   }
 }
+
+// Função para atualizar status da assinatura
+export async function updateSubscriptionStatus(userId: string, status: 'free' | 'premium', subscriptionId?: string): Promise<Profile> {
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .update({ 
+        subscription_status: status,
+        subscription_id: subscriptionId || null
+      })
+      .eq('id', userId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data as Profile;
+  } catch (error) {
+    console.error(`Erro ao atualizar status da assinatura para usuário ${userId}:`, error);
+    throw error;
+  }
+}
+
+// Função para verificar se as credenciais do Supabase estão configuradas
+export const checkSupabaseCredentials = () => {
+  return {
+    hasCredentials: !!supabaseUrl && !!supabaseAnonKey,
+    url: supabaseUrl,
+    key: supabaseAnonKey
+  };
+};
+
+// Funções de autenticação
+export const signIn = async (email: string, password: string) => {
+  return supabase.auth.signInWithPassword({ email, password });
+};
+
+export async function signUp(email: string, password: string) {
+  try {
+    const result = await supabase.auth.signUp({
+      email,
+      password,
+    });
+    
+    if (result.error) {
+      console.error('Erro durante o cadastro:', result.error);
+      
+      // Verificar se é um erro de banco de dados
+      if (result.error.message.includes('Database error')) {
+        console.error('Erro de banco de dados detectado:', result.error);
+      }
+    }
+    
+    return result;
+  } catch (error) {
+    console.error('Exceção não tratada durante o cadastro:', error);
+    return { error, data: null };
+  }
+}
+
+export const signOut = async () => {
+  return supabase.auth.signOut();
+};
+
+export const getSession = async () => {
+  return supabase.auth.getSession();
+};
+
+export const getUser = async () => {
+  const { data: { user } } = await supabase.auth.getUser();
+  return user;
+};
+
+// Funções para lidar com dados
+export const createRecord = async (table: string, data: any) => {
+  return supabase
+    .from(table)
+    .insert(data)
+    .select();
+};
+
+export const updateRecord = async (table: string, id: string, data: any) => {
+  return supabase
+    .from(table)
+    .update(data)
+    .eq('id', id)
+    .select();
+};
+
+export const deleteRecord = async (table: string, id: string) => {
+  return supabase
+    .from(table)
+    .delete()
+    .eq('id', id);
+};
+
+export const getRecords = async (table: string) => {
+  return supabase
+    .from(table)
+    .select('*');
+};
+
+export const getRecordById = async (table: string, id: string) => {
+  return supabase
+    .from(table)
+    .select('*')
+    .eq('id', id)
+    .single();
+};
+
+export const getRecordsByField = async (table: string, field: string, value: any) => {
+  return supabase
+    .from(table)
+    .select('*')
+    .eq(field, value);
+};
+
+// Funções para armazenamento
+export const uploadFile = async (bucket: string, path: string, file: File) => {
+  return supabase.storage
+    .from(bucket)
+    .upload(path, file, {
+      cacheControl: '3600',
+      upsert: true
+    });
+};
+
+export const getFileUrl = (bucket: string, path: string) => {
+  return supabase.storage
+    .from(bucket)
+    .getPublicUrl(path);
+};
+
+export const deleteFile = async (bucket: string, path: string) => {
+  return supabase.storage
+    .from(bucket)
+    .remove([path]);
+};
+
+// Funções para tempo real
+export const subscribeToTable = (table: string, callback: (payload: any) => void) => {
+  return supabase
+    .channel(`${table}_changes`)
+    .on('postgres_changes', { event: '*', schema: 'public', table }, callback)
+    .subscribe();
+};
+
+export const unsubscribe = (subscription: any) => {
+  supabase.removeChannel(subscription);
+};
+
+export default supabase;
+

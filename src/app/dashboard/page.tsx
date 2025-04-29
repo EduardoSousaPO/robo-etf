@@ -1,42 +1,122 @@
-import { UserButton } from '@clerk/nextjs';
-import { currentUser } from '@clerk/nextjs/server';
+'use client';
 
-export default async function DashboardPage() {
-  const user = await currentUser();
-  
+import { useState } from 'react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { MarketOverview } from '@/components/dashboard/market-overview';
+import { ETFTable } from '@/components/dashboard/etf-table';
+import { FilterSidebar } from '@/components/dashboard/filter-sidebar';
+import { ChatWidget } from '@/components/chat/chat-widget';
+import { Button } from '@/components/ui/button';
+import { MessageSquare, X } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { UserButton } from '@/components/user-button';
+import { useAuth } from '@/lib/hooks/useAuth';
+
+export default function DashboardPage() {
+  const [activeTab, setActiveTab] = useState('overview');
+  const [showChat, setShowChat] = useState(false);
+  const [filters, setFilters] = useState<Record<string, any>>({});
+  const { user } = useAuth();
+
+  const handleApplyFilters = (newFilters: Record<string, any>) => {
+    setFilters(newFilters);
+  };
+
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-2xl font-bold">Painel do Usuário</h1>
-        <UserButton />
+    <div className="container mx-auto p-4 md:p-6">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+        <h1 className="text-2xl md:text-3xl font-bold">Dashboard de ETFs</h1>
+        {user && <UserButton user={user} />}
       </div>
-      
-      <div className="bg-white dark:bg-slate-800 rounded-lg shadow p-6">
-        <h2 className="text-xl font-semibold mb-4">Bem-vindo, {user?.firstName || 'Usuário'}!</h2>
-        <p className="mb-4">Aqui você pode gerenciar suas carteiras de ETFs e configurações de perfil.</p>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
-          <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-            <h3 className="font-medium mb-2">Criar Nova Carteira</h3>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-              Configure uma nova carteira baseada no seu perfil de risco
-            </p>
-            <a href="/portfolio/new" className="inline-flex items-center justify-center rounded-md bg-blue-600 hover:bg-blue-700 text-white px-4 py-2">
-              Começar
-            </a>
+
+      <Tabs defaultValue="overview" onValueChange={setActiveTab} className="w-full">
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-5 mb-6">
+          <TabsTrigger value="overview">Visão Geral</TabsTrigger>
+          <TabsTrigger value="explorer">Explorador</TabsTrigger>
+          <TabsTrigger value="compare" disabled>Comparador</TabsTrigger> {/* Desabilitado por enquanto */}
+          <TabsTrigger value="screener" disabled>Screener</TabsTrigger> {/* Desabilitado por enquanto */}
+          <TabsTrigger value="watchlist" disabled>Watchlist</TabsTrigger> {/* Desabilitado por enquanto */}
+        </TabsList>
+
+        <TabsContent value="overview" className="mt-6 space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <Card className="lg:col-span-1">
+              <CardHeader>
+                <CardTitle>Destaques Globais</CardTitle>
+                <CardDescription>Melhor desempenho recente</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <MarketOverview region="global" />
+              </CardContent>
+            </Card>
+
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle>Mercado EUA</CardTitle>
+                <CardDescription>Visão geral do mercado americano</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <MarketOverview region="us" />
+              </CardContent>
+            </Card>
           </div>
-          
-          <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-            <h3 className="font-medium mb-2">Minhas Carteiras</h3>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-              Visualize e gerencie suas carteiras existentes
-            </p>
-            <a href="/portfolio" className="inline-flex items-center justify-center rounded-md bg-blue-600 hover:bg-blue-700 text-white px-4 py-2">
-              Ver Carteiras
-            </a>
-          </div>
-        </div>
-      </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>ETFs Populares (Global)</CardTitle>
+              <CardDescription>ETFs mais negociados globalmente</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ETFTable category="all" region="global" limit={10} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="explorer" className="mt-6">
+           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+             <div className="md:col-span-1">
+               <FilterSidebar onApplyFilters={handleApplyFilters} />
+             </div>
+             <div className="md:col-span-3">
+               <Card>
+                 <CardHeader>
+                   <CardTitle>Explorar ETFs</CardTitle>
+                   <CardDescription>Encontre ETFs com base nos seus critérios</CardDescription>
+                 </CardHeader>
+                 <CardContent>
+                   <ETFTable 
+                     category={filters.category || 'all'} 
+                     region={filters.region || 'global'} 
+                     limit={50} 
+                     filter={filters} 
+                   />
+                 </CardContent>
+               </Card>
+             </div>
+           </div>
+        </TabsContent>
+
+        {/* Placeholder para outras abas */}
+        <TabsContent value="compare"><p>Funcionalidade de Comparador em desenvolvimento.</p></TabsContent>
+        <TabsContent value="screener"><p>Funcionalidade de Screener em desenvolvimento.</p></TabsContent>
+        <TabsContent value="watchlist"><p>Funcionalidade de Watchlist em desenvolvimento.</p></TabsContent>
+
+      </Tabs>
+
+      {/* Botão de chat flutuante */}
+      <Button 
+        onClick={() => setShowChat(!showChat)}
+        className="fixed bottom-6 right-6 bg-blue-600 text-white rounded-full p-3 shadow-lg hover:bg-blue-700 transition-all z-50 h-12 w-12"
+        size="icon"
+      >
+        {showChat ? <X size={24} /> : <MessageSquare size={24} />}
+        <span className="sr-only">{showChat ? 'Fechar Chat' : 'Abrir Chat'}</span>
+      </Button>
+
+      {/* Widget de chat */}
+      {showChat && <ChatWidget onClose={() => setShowChat(false)} />} 
     </div>
   );
-} 
+}
+

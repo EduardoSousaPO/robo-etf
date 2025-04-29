@@ -1,49 +1,54 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+import { createMiddlewareClient as createSupabaseMiddlewareClient } from '@supabase/auth-helpers-nextjs';
+import { createMiddlewareClient as createLocalMiddlewareClient } from './lib/supabase-client';
 
-// Rotas que requerem autenticação
-const PROTECTED_ROUTES = [
-  '/dashboard', 
-  '/portfolio', 
-  '/my-portfolios',
-  '/api/optimize',
-  '/api/subscription'
+// Rotas que não requerem autenticação
+const publicRoutes = [
+  '/',
+  '/sign-in*',
+  '/sign-up*',
+  '/api/webhook*',
+  '/api/mercadopago/webhook*'
 ];
 
-// Rotas específicas para usuários não autenticados
-const AUTH_ROUTES = [
-  '/sign-in',
-  '/sign-up'
-];
+// Verifica se a rota atual é pública
+function isPublicRoute(pathname: string): boolean {
+  return publicRoutes.some(route => {
+    if (route.endsWith('*')) {
+      return pathname.startsWith(route.replace('*', ''));
+    }
+    return pathname === route;
+  });
+}
 
 export async function middleware(req: NextRequest) {
-  // Criar cliente Supabase para o middleware
   const res = NextResponse.next();
-  const supabase = createMiddlewareClient({ req, res });
   
-  // Verificar a sessão atual
-  const { data: { session }} = await supabase.auth.getSession();
+  // Tenta criar o cliente usando nossas configurações locais primeiro
+  let supabase;
+  try {
+    // Usa nossa função que já tem as chaves configuradas
+    supabase = createLocalMiddlewareClient();
+  } catch (error) {
+    console.error("Erro ao criar cliente middleware local:", error);
+    // Fallback para a versão padrão se houver erro
+    supabase = createSupabaseMiddlewareClient({ req, res });
+  }
   
-  // Consideramos logado se existir uma sessão
-  const isAuthenticated = !!session;
+  // Verifica a sessão do usuário
+  const { data: { session } } = await supabase.auth.getSession();
+  const pathname = req.nextUrl.pathname;
   
-  // Obter o caminho da URL
-  const path = req.nextUrl.pathname;
-  
-  // Verificar se a rota requer autenticação
-  const isProtectedRoute = PROTECTED_ROUTES.some((route) => path.startsWith(route));
-  const isAuthRoute = AUTH_ROUTES.some((route) => path.startsWith(route));
-  
-  // Redirecionar baseado nas condições
-  if (isProtectedRoute && !isAuthenticated) {
-    // Redirecionar para login se tentar acessar rota protegida sem autenticação
+  // Redireciona usuários não autenticados tentando acessar rotas protegidas
+  if (!session && !isPublicRoute(pathname)) {
     const redirectUrl = new URL('/sign-in', req.url);
-    redirectUrl.searchParams.set('redirect', path);
+    redirectUrl.searchParams.set('redirect_url', req.url);
     return NextResponse.redirect(redirectUrl);
   }
   
-  if (isAuthRoute && isAuthenticated) {
-    // Redirecionar para dashboard se tentar acessar página de login já autenticado
+  // Redireciona usuários autenticados tentando acessar páginas de autenticação
+  if (session && (pathname === '/sign-in' || pathname === '/sign-up')) {
     return NextResponse.redirect(new URL('/dashboard', req.url));
   }
   
@@ -51,14 +56,6 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: [
-    /*
-     * Match all request paths except for:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - public/* (public files)
-     */
-    '/((?!_next/static|_next/image|favicon.ico|public).*)',
-  ],
-}
+  matcher: ['/((?!.+\\.[\\w]+$|_next).*)', '/', '/(api|trpc)(.*)'],
+};
+

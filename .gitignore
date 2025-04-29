@@ -36,3 +36,6 @@ next-env.d.ts
 
 # Clerk development keys
 .env
+
+# clerk configuration (can include secrets)
+/.clerk/

@@ -1,91 +1,144 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { createServiceClient } from '@/lib/supabase-client';
 
-export async function POST(req: NextRequest) {
+// Interfaces para tipagem dos dados do Mercado Pago
+interface WebhookPayload {
+  action: string;
+  api_version: string;
+  data: {
+    id: string;
+  };
+  date_created: string;
+  id: number;
+  live_mode: boolean;
+  type: 'payment' | 'subscription' | string;
+  user_id: string;
+}
+
+interface PaymentData {
+  id: number;
+  status: string;
+  external_reference?: string;
+  transaction_amount: number;
+  date_created: string;
+  payer: {
+    email: string;
+  };
+}
+
+interface SubscriptionData {
+  id: string;
+  status: string;
+  payer_id: string;
+  external_reference?: string;
+  reason: string;
+  date_created: string;
+}
+
+export async function POST(request: NextRequest) {
   try {
-    // Verificar assinatura do webhook (na implementação real, verificaria a assinatura)
-    const signature = req.headers.get('x-signature');
-    if (!signature) {
-      console.warn('Webhook sem assinatura');
-      // Em produção, retornaria erro 401
+    console.log('🚀 ~ Webhook recebido');
+    
+    // Verificar assinatura do webhook (implementar se necessário)
+    
+    const payload: WebhookPayload = await request.json();
+    console.log('🚀 ~ payload:', payload);
+    
+    if (payload.type === 'payment') {
+      return await handlePaymentNotification(payload.data.id);
+    } 
+    else if (payload.type === 'subscription') {
+      return await handleSubscriptionNotification(payload.data.id);
     }
     
-    // Obter dados do webhook
-    const data = await req.json();
-    console.log('Webhook recebido:', JSON.stringify(data));
-    
-    // Processar diferentes tipos de notificação
-    if (data.type === 'payment') {
-      await handlePaymentNotification(data);
-    } else if (data.type === 'subscription_preapproval') {
-      await handleSubscriptionNotification(data);
-    } else {
-      console.log(`Tipo de notificação não tratado: ${data.type}`);
-    }
-    
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ ok: true });
   } catch (error) {
     console.error('Erro ao processar webhook:', error);
-    return NextResponse.json(
-      { error: 'Erro ao processar webhook' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Erro ao processar webhook' }, { status: 500 });
   }
 }
 
-// Processar notificação de pagamento
-async function handlePaymentNotification(data: any) {
-  const paymentId = data.data.id;
-  
-  // Obter detalhes do pagamento
-  const response = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
-    headers: {
-      'Authorization': `Bearer ${process.env.MERCADO_PAGO_ACCESS_TOKEN}`,
-    },
-  });
-  
-  if (!response.ok) {
-    throw new Error(`Erro ao obter detalhes do pagamento: ${response.status}`);
+async function handlePaymentNotification(paymentId: string) {
+  try {
+    // Obter detalhes do pagamento da API do Mercado Pago
+    const response = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+      headers: {
+        Authorization: `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}`
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Erro ao obter detalhes do pagamento: ${response.statusText}`);
+    }
+    
+    const paymentData: PaymentData = await response.json();
+    console.log('🚀 ~ paymentData:', paymentData);
+    
+    // Processar pagamento aprovado
+    if (paymentData.status === 'approved' && paymentData.external_reference) {
+      const supabase = createServiceClient();
+      
+      // Atualizar status da assinatura do usuário no banco de dados
+      const { error } = await supabase
+        .from('profiles')
+        .update({ subscription_status: 'active' })
+        .eq('id', paymentData.external_reference);
+        
+      if (error) {
+        console.error('Erro ao atualizar status da assinatura:', error);
+      } else {
+        console.log(`Assinatura atualizada para active para o usuário ${paymentData.external_reference}`);
+      }
+    }
+    
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error('Erro ao processar notificação de pagamento:', error);
+    return NextResponse.json({ error: 'Erro ao processar notificação de pagamento' }, { status: 500 });
   }
-  
-  const paymentData = await response.json();
-  const { status, external_reference, transaction_amount } = paymentData;
-  
-  console.log(`Pagamento ${paymentId} com status ${status}`);
-  
-  // Atualizar status do pagamento no banco de dados
-  // Na implementação real, atualizaria o status do pagamento e liberaria acesso premium
 }
 
-// Processar notificação de assinatura
-async function handleSubscriptionNotification(data: any) {
-  const subscriptionId = data.data.id;
-  
-  // Obter detalhes da assinatura
-  const response = await fetch(`https://api.mercadopago.com/preapproval/${subscriptionId}`, {
-    headers: {
-      'Authorization': `Bearer ${process.env.MERCADO_PAGO_ACCESS_TOKEN}`,
-    },
-  });
-  
-  if (!response.ok) {
-    throw new Error(`Erro ao obter detalhes da assinatura: ${response.status}`);
-  }
-  
-  const subscriptionData = await response.json();
-  const { status, external_reference } = subscriptionData;
-  
-  console.log(`Assinatura ${subscriptionId} com status ${status}`);
-  
-  // Atualizar status da assinatura no banco de dados
-  const { error } = await supabase
-    .from('profiles')
-    .update({
-      subscription_status: status,
-    })
-    .eq('subscription_id', subscriptionId);
-  
-  if (error) {
-    console.error('Erro ao atualizar status da assinatura:', error);
+async function handleSubscriptionNotification(subscriptionId: string) {
+  try {
+    // Obter detalhes da assinatura da API do Mercado Pago
+    const response = await fetch(`https://api.mercadopago.com/preapproval/${subscriptionId}`, {
+      headers: {
+        Authorization: `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}`
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Erro ao obter detalhes da assinatura: ${response.statusText}`);
+    }
+    
+    const subscriptionData: SubscriptionData = await response.json();
+    console.log('🚀 ~ subscriptionData:', subscriptionData);
+    
+    // Processar mudança de status da assinatura
+    if (subscriptionData.external_reference) {
+      const supabase = createServiceClient();
+      
+      let newStatus = 'free';
+      if (subscriptionData.status === 'authorized' || subscriptionData.status === 'active') {
+        newStatus = 'active';
+      }
+      
+      // Atualizar status da assinatura do usuário no banco de dados
+      const { error } = await supabase
+        .from('profiles')
+        .update({ subscription_status: newStatus })
+        .eq('id', subscriptionData.external_reference);
+        
+      if (error) {
+        console.error('Erro ao atualizar status da assinatura:', error);
+      } else {
+        console.log(`Assinatura atualizada para ${newStatus} para o usuário ${subscriptionData.external_reference}`);
+      }
+    }
+    
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error('Erro ao processar notificação de assinatura:', error);
+    return NextResponse.json({ error: 'Erro ao processar notificação de assinatura' }, { status: 500 });
   }
 }

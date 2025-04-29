@@ -1,14 +1,30 @@
 import { optimizePortfolio } from '@/lib/optim';
-import { getLiquidETFs } from '@/lib/fmp';
+import { getLiquidETFs } from '@/lib/api-adapter';
 import { NextRequest, NextResponse } from 'next/server';
+import { verifyUserToken } from '@/lib/auth';
 
 interface OptimizeRequest {
   riskScore: number;
 }
 
-export async function POST(req: NextRequest) {
+export async function POST(request: NextRequest) {
   try {
-    const data = await req.json() as OptimizeRequest;
+    // Extrair o token do cabeçalho de autorização
+    const authHeader = request.headers.get('Authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'Token de autenticação inválido' }, { status: 401 });
+    }
+    
+    const token = authHeader.split(' ')[1];
+    
+    // Verificar a autenticação do usuário
+    const user = await verifyUserToken(token);
+    
+    if (!user) {
+      return NextResponse.json({ error: 'Usuário não autenticado. Faça login para continuar.' }, { status: 401 });
+    }
+    
+    const data = await request.json() as OptimizeRequest;
     const { riskScore } = data;
     
     if (!riskScore || riskScore < 1 || riskScore > 5) {
@@ -61,10 +77,10 @@ export async function POST(req: NextRequest) {
       ...result,
       rebalance_date: rebalanceDate.toISOString().split('T')[0]
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Erro na otimização:', error);
     return NextResponse.json(
-      { error: 'Erro ao processar a otimização da carteira.' },
+      { error: error.message || 'Erro ao processar a otimização da carteira.' },
       { status: 500 }
     );
   }

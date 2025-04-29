@@ -1,103 +1,71 @@
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Session, User, AuthChangeEvent } from '@supabase/supabase-js';
+import { useState, useEffect } from 'react';
+import { createClient } from '@supabase/supabase-js';
+import { Profile } from '@/lib/supabase';
+import { useAuth } from './useAuth';
 
-// Define uma interface para representar o tipo de usuário com os dados de perfil
-export interface UserWithProfile extends User {
-  profile?: {
-    id: string;
-    name: string;
-    risk_score: number;
-    email: string;
-  };
+// Função local para criar cliente do Supabase no navegador
+function getBrowserClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://iikdiavzocnpspebjasp.supabase.co';
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlpa2RpYXZ6b2NucHNwZWJqYXNwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDU2MTc1NzQsImV4cCI6MjA2MTE5MzU3NH0.c7Yw_UQenZABl5tg5AtOGaQbv_VE2gu3Wbo6zPJ3rAw';
+  
+  return createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+    },
+  });
 }
 
 export function useUser() {
-  const [user, setUser] = useState<UserWithProfile | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [isSignedIn, setIsSignedIn] = useState<boolean>(false);
-  const router = useRouter();
-  const supabase = createClientComponentClient();
+  const { user, loading: authLoading } = useAuth();
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [loading, setLoading] = useState(true);
+  const supabase = getBrowserClient();
 
   useEffect(() => {
-    // Função para buscar os dados do usuário e perfil
-    const fetchUser = async () => {
+    // Função para buscar o perfil do usuário
+    const fetchProfile = async () => {
+      if (!user) {
+        setProfile(null);
+        setLoading(false);
+        return;
+      }
+      
       try {
-        setIsLoading(true);
+        setLoading(true);
         
-        // Buscar sessão atual
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        
-        if (sessionError) {
-          console.error('Erro ao verificar sessão:', sessionError);
-          return;
-        }
-        
-        if (!session) {
-          setUser(null);
-          setIsSignedIn(false);
-          setIsLoading(false);
-          return;
-        }
-        
-        setIsSignedIn(true);
-        
-        // Buscar perfil do usuário
-        if (session.user) {
-          const { data: profile, error: profileError } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', session.user.id)
-            .single();
-            
-          if (profileError && profileError.code !== 'PGRST116') {
-            console.error('Erro ao buscar perfil:', profileError);
-          }
+        // Buscar o perfil do usuário
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
           
-          // Combinar usuário com dados do perfil
-          const userWithProfile: UserWithProfile = {
-            ...session.user,
-            profile: profile || undefined
-          };
-          
-          setUser(userWithProfile);
+        if (error) {
+          console.error('Erro ao buscar perfil:', error);
+        } else {
+          setProfile(data);
         }
       } catch (error) {
-        console.error('Erro ao buscar usuário:', error);
+        console.error('Erro ao buscar perfil:', error);
       } finally {
-        setIsLoading(false);
+        setLoading(false);
       }
     };
 
-    // Buscar usuário ao montar o componente
-    fetchUser();
-    
-    // Configurar listener para mudanças de autenticação
-    const { data: authListener } = supabase.auth.onAuthStateChange((event: AuthChangeEvent, session: Session | null) => {
-      fetchUser();
-    });
-    
-    // Limpar listener ao desmontar
-    return () => {
-      authListener.subscription.unsubscribe();
-    };
-  }, [supabase, router]);
-
-  // Função para logout
-  const signOut = async () => {
-    try {
-      await supabase.auth.signOut();
-      router.push('/sign-in');
-    } catch (error) {
-      console.error('Erro ao fazer logout:', error);
+    // Só buscar o perfil se o estado de autenticação já tiver sido carregado
+    if (!authLoading) {
+      fetchProfile();
     }
-  };
+  }, [user, authLoading, supabase]);
+
+  const hasActiveSubscription = profile?.subscription_status === 'premium';
 
   return {
     user,
-    isLoading,
-    isSignedIn,
-    signOut
+    profile,
+    loading: loading || authLoading,
+    hasActiveSubscription,
+    isLoggedIn: !!user,
   };
 } 

@@ -1,4 +1,4 @@
-import { getHistoricalPrices } from './fmp';
+import { getHistoricalPrices } from './api-adapter'; // Corrigido para usar api-adapter
 import { MIN_WEIGHT, MAX_WEIGHT, TARGET_RETURN_FACTOR } from './constants';
 
 // Tipos para o algoritmo de otimização
@@ -23,6 +23,7 @@ export type OptimizationResult = {
 function calculateDailyReturns(prices: number[]): number[] {
   const returns: number[] = [];
   for (let i = 1; i < prices.length; i++) {
+    if (prices[i - 1] === 0) continue; // Evitar divisão por zero
     const dailyReturn = (prices[i] / prices[i - 1]) - 1;
     returns.push(dailyReturn);
   }
@@ -31,6 +32,7 @@ function calculateDailyReturns(prices: number[]): number[] {
 
 // Função para calcular retorno anualizado
 function calculateAnnualizedReturn(dailyReturns: number[]): number {
+  if (dailyReturns.length === 0) return 0;
   const totalReturn = dailyReturns.reduce((acc, ret) => (1 + acc) * (1 + ret) - 1, 0);
   const annualizedReturn = Math.pow(1 + totalReturn, 252 / dailyReturns.length) - 1;
   return annualizedReturn;
@@ -38,6 +40,7 @@ function calculateAnnualizedReturn(dailyReturns: number[]): number {
 
 // Função para calcular volatilidade anualizada
 function calculateVolatility(dailyReturns: number[]): number {
+  if (dailyReturns.length === 0) return 0;
   const mean = dailyReturns.reduce((acc, val) => acc + val, 0) / dailyReturns.length;
   const variance = dailyReturns.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0) / dailyReturns.length;
   const dailyVolatility = Math.sqrt(variance);
@@ -64,6 +67,11 @@ function calculateCovarianceMatrix(etfsData: ETFData[]): number[][] {
         // Usar apenas o período comum entre os dois ETFs
         const returnsITrimmed = returnsI.slice(0, minLength);
         const returnsJTrimmed = returnsJ.slice(0, minLength);
+        
+        if (minLength === 0) {
+          covMatrix[i][j] = 0;
+          continue;
+        }
         
         const meanI = returnsITrimmed.reduce((acc, val) => acc + val, 0) / minLength;
         const meanJ = returnsJTrimmed.reduce((acc, val) => acc + val, 0) / minLength;
@@ -100,6 +108,7 @@ export async function optimizePortfolio(
         
         // Verificar se temos dados suficientes
         if (!historicalPrices || historicalPrices.length < 30) {
+          console.warn(`Dados históricos insuficientes para ${symbol}`);
           return null;
         }
         
@@ -130,6 +139,7 @@ export async function optimizePortfolio(
     
     // Verificar se temos ETFs suficientes para otimização
     if (etfsData.length < 5) {
+      console.warn('Dados insuficientes para otimização, usando fallback.');
       throw new Error('Dados insuficientes para otimização');
     }
     
@@ -179,8 +189,12 @@ export async function optimizePortfolio(
     }
     
     // Normalizar pesos
-    const sumWeights = weights.reduce((acc, w) => acc + w, 0);
-    weights = weights.map(w => w / sumWeights);
+    const sumWeightsInitial = weights.reduce((acc, w) => acc + w, 0);
+    if (sumWeightsInitial > 0) {
+      weights = weights.map(w => w / sumWeightsInitial);
+    } else {
+      weights = Array(etfsData.length).fill(1 / etfsData.length);
+    }
     
     // Aplicar restrições de peso mínimo e máximo
     let needsRebalance = true;
@@ -193,7 +207,7 @@ export async function optimizePortfolio(
       
       // Verificar e ajustar pesos mínimos
       for (let i = 0; i < weights.length; i++) {
-        if (weights[i] < MIN_WEIGHT && weights[i] > 0) {
+        if (weights[i] < MIN_WEIGHT && weights[i] > 1e-6) { // Usar tolerância pequena
           // Se o peso for menor que o mínimo, definir como zero ou mínimo
           if (weights[i] < MIN_WEIGHT / 2) {
             weights[i] = 0;
@@ -229,9 +243,9 @@ export async function optimizePortfolio(
     if (riskScore <= 2) {
       // Mapear ETFs US para equivalentes IE
       const usToIeMap: Record<string, string> = {
-        'VTI': 'VUSA-IE',
-        'QQQ': 'EQQQ-IE',
-        'SPY': 'CSPX-IE',
+        'VTI': 'VUSA.L', // Exemplo: VUSA.L é um ETF S&P 500 domiciliado na Irlanda
+        'QQQ': 'EQQQ.L', // Exemplo: EQQQ.L é um ETF Nasdaq 100 domiciliado na Irlanda
+        'SPY': 'CSPX.L', // Exemplo: CSPX.L é um ETF S&P 500 domiciliado na Irlanda
         // Adicionar mais mapeamentos conforme necessário
       };
       
@@ -241,12 +255,13 @@ export async function optimizePortfolio(
         const symbol = etfsData[i].symbol;
         const weight = weights[i];
         
-        if (weight > 0) {
+        if (weight > 1e-6) { // Usar tolerância pequena
           if (etfsData[i].domicile === 'US' && usToIeMap[symbol]) {
             // Substituir por equivalente IE
-            newWeights[usToIeMap[symbol]] = weight;
+            const ieSymbol = usToIeMap[symbol];
+            newWeights[ieSymbol] = (newWeights[ieSymbol] || 0) + weight;
           } else {
-            newWeights[symbol] = weight;
+            newWeights[symbol] = (newWeights[symbol] || 0) + weight;
           }
         }
       }
@@ -261,11 +276,11 @@ export async function optimizePortfolio(
           portfolioVariance += weights[i] * weights[j] * covMatrix[i][j];
         }
       }
-      const portfolioVolatility = Math.sqrt(portfolioVariance);
+      const portfolioVolatility = Math.sqrt(Math.max(0, portfolioVariance)); // Garantir não negativo
       
       // Calcular Sharpe Ratio (assumindo taxa livre de risco de 2%)
       const riskFreeRate = 0.02;
-      const sharpeRatio = (portfolioReturn - riskFreeRate) / portfolioVolatility;
+      const sharpeRatio = portfolioVolatility === 0 ? 0 : (portfolioReturn - riskFreeRate) / portfolioVolatility;
       
       return {
         weights: newWeights,
@@ -280,7 +295,7 @@ export async function optimizePortfolio(
     // Criar objeto de pesos final
     const finalWeights: Record<string, number> = {};
     for (let i = 0; i < etfsData.length; i++) {
-      if (weights[i] > 0) {
+      if (weights[i] > 1e-6) { // Usar tolerância pequena
         finalWeights[etfsData[i].symbol] = parseFloat(weights[i].toFixed(4));
       }
     }
@@ -295,11 +310,11 @@ export async function optimizePortfolio(
         portfolioVariance += weights[i] * weights[j] * covMatrix[i][j];
       }
     }
-    const portfolioVolatility = Math.sqrt(portfolioVariance);
+    const portfolioVolatility = Math.sqrt(Math.max(0, portfolioVariance)); // Garantir não negativo
     
     // Calcular Sharpe Ratio (assumindo taxa livre de risco de 2%)
     const riskFreeRate = 0.02;
-    const sharpeRatio = (portfolioReturn - riskFreeRate) / portfolioVolatility;
+    const sharpeRatio = portfolioVolatility === 0 ? 0 : (portfolioReturn - riskFreeRate) / portfolioVolatility;
     
     return {
       weights: finalWeights,
@@ -331,3 +346,4 @@ export async function optimizePortfolio(
     };
   }
 }
+
