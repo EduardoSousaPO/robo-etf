@@ -31,8 +31,8 @@ Robo-ETF é uma aplicação SaaS que permite criar carteiras globais de ETFs ali
 
 - Node.js 20+
 - pnpm 10+
-- Conta Supabase
-- Conta Clerk
+- Conta Supabase (banco de dados)
+- Conta Clerk (autenticação)
 - Conta OpenAI
 - Conta Financial Modeling Prep
 - Conta Mercado Pago (para processamento de pagamentos)
@@ -48,13 +48,16 @@ OPENAI_API_KEY=sua_chave_openai
 MERCADO_PAGO_ACCESS_TOKEN=seu_token_mercado_pago
 POSTHOG_KEY=sua_chave_posthog
 
-# Supabase
-SUPABASE_URL=sua_url_supabase
-SUPABASE_SERVICE_KEY=sua_chave_servico_supabase
+# Supabase (apenas banco de dados)
+NEXT_PUBLIC_SUPABASE_URL=sua_url_supabase
+NEXT_PUBLIC_SUPABASE_ANON_KEY=sua_chave_anon_supabase
+SUPABASE_SERVICE_ROLE_KEY=sua_chave_servico_supabase
 
-# Clerk
-CLERK_SECRET_KEY=sua_chave_secreta_clerk
+# Clerk (autenticação)
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=sua_chave_publica_clerk
+CLERK_SECRET_KEY=sua_chave_secreta_clerk
+CLERK_JWT_TEMPLATE_ID=seu_template_id_jwt
+CLERK_WEBHOOK_SECRET=seu_webhook_secret
 
 # App
 NEXT_PUBLIC_APP_URL=http://localhost:3000
@@ -88,6 +91,7 @@ robo-etf/
 │   ├── app/                 # Páginas Next.js (App Router)
 │   │   ├── account/         # Página de conta do usuário
 │   │   ├── api/             # Rotas da API
+│   │   │   └── webhooks/    # Webhooks (Clerk, Mercado Pago)
 │   │   ├── onboarding/      # Questionário de perfil
 │   │   ├── portfolio/       # Visualização da carteira
 │   │   └── page.tsx         # Landing page
@@ -95,6 +99,7 @@ robo-etf/
 │   │   ├── forms/           # Componentes de formulário
 │   │   └── ui/              # Componentes de UI
 │   └── lib/                 # Funções utilitárias
+│       ├── clerk.ts         # Integrações com Clerk
 │       ├── constants.ts     # Constantes da aplicação
 │       ├── fmp.ts           # Integração com Financial Modeling Prep
 │       ├── mercadopago.ts   # Integração com Mercado Pago
@@ -102,7 +107,7 @@ robo-etf/
 │       ├── optim.ts         # Algoritmo de otimização
 │       ├── pdf-generator.ts # Gerador de PDF
 │       ├── rebalance.ts     # Lógica de rebalanceamento
-│       └── supabase.ts      # Cliente Supabase
+│       └── supabase-client.ts # Cliente Supabase (banco de dados)
 └── tests/                   # Testes unitários e E2E
 ```
 
@@ -123,6 +128,7 @@ O algoritmo Mean-Variance implementado segue os seguintes passos:
 Otimiza uma carteira de ETFs com base no perfil de risco.
 
 **Request:**
+
 ```json
 {
   "riskScore": 3
@@ -130,11 +136,12 @@ Otimiza uma carteira de ETFs com base no perfil de risco.
 ```
 
 **Response:**
+
 ```json
 {
   "weights": {
     "VTI": 0.25,
-    "QQQ": 0.20,
+    "QQQ": 0.2,
     "...": "..."
   },
   "metrics": {
@@ -151,6 +158,7 @@ Otimiza uma carteira de ETFs com base no perfil de risco.
 Gera uma explicação da carteira usando IA.
 
 **Request:**
+
 ```json
 {
   "portfolio": {
@@ -162,6 +170,7 @@ Gera uma explicação da carteira usando IA.
 ```
 
 **Response:**
+
 ```json
 {
   "explanation": "Sua carteira foi otimizada para um perfil moderado..."
@@ -173,6 +182,7 @@ Gera uma explicação da carteira usando IA.
 Gera um PDF da carteira.
 
 **Request:**
+
 ```json
 {
   "portfolio": { "..." },
@@ -182,6 +192,7 @@ Gera um PDF da carteira.
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -194,6 +205,7 @@ Gera um PDF da carteira.
 Cria uma assinatura no Mercado Pago.
 
 **Response:**
+
 ```json
 {
   "success": true,
