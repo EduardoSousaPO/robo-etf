@@ -8,6 +8,15 @@ compatibility_flags = ["nodejs_compat"]
 directory = ".open-next/assets"
 binding = "ASSETS"
 
+[vars]
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY = "pk_test_your-publishable-key"
+CLERK_SECRET_KEY = "sk_test_your-secret-key"
+CLERK_JWT_TEMPLATE_ID = "jwt_template_id"
+CLERK_WEBHOOK_SECRET = "whsec_your-webhook-secret"
+NEXT_PUBLIC_SUPABASE_URL = "https://iikdiavzocnpspebjasp.supabase.co"
+NEXT_PUBLIC_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlpa2RpYXZ6b2NucHNwZWJqYXNwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDU2MTc1NzQsImV4cCI6MjA2MTE5MzU3NH0.WLBS9-isTcTbGr7OE1GCRQZN58nPxeHVpY5B4Sjpn-0"
+SUPABASE_SERVICE_ROLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlpa2RpYXZ6b2NucHNwZWJqYXNwIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0NTYxNzU3NCwiZXhwIjoyMDYxMTkzNTc0fQ.bwQZqwTpEvmFdVMzgNxPovEvCaTHInBoXEKfFTTquJg"
+
 # [[d1_databases]]
 # binding = "DB"
 # database_name = "random_id"

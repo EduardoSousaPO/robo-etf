@@ -1,78 +1,30 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { Button } from '@/components/ui/button';
-import { User } from '@supabase/auth-helpers-nextjs';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { useAuth } from '@/lib/hooks/useAuth';
+import { useClerkAuth } from '@/lib/hooks/useClerkAuth';
+import { UserButton as ClerkUserButton } from '@clerk/nextjs';
 
-interface UserButtonProps {
-  user: User;
-}
+export function UserButton() {
+  const { user, isLoaded } = useClerkAuth();
 
-export function UserButton({ user }: UserButtonProps) {
-  const [isLoading, setIsLoading] = useState(false);
-  const router = useRouter();
-  const { signOut } = useAuth();
+  // Se o componente ainda não carregou, mostrar um espaço reservado
+  if (!isLoaded) {
+    return <div className="h-8 w-8 animate-pulse rounded-full bg-muted"></div>;
+  }
 
-  // Obter iniciais do email do usuário para o avatar
-  const getInitials = (email: string) => {
-    return email?.substring(0, 2).toUpperCase() || 'U';
-  };
+  // Se não houver usuário logado, não mostrar o botão
+  if (!user) {
+    return null;
+  }
 
-  const handleSignOut = async () => {
-    setIsLoading(true);
-    try {
-      await signOut();
-      // Lógica de navegação após o logout
-      router.refresh();
-      router.push('/');
-    } catch (error) {
-      console.error('Erro ao fazer logout:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
+  // Usar o botão personalizado do Clerk
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="relative rounded-full h-8 w-8 p-0">
-          <Avatar>
-            <AvatarFallback>{getInitials(user.email || '')}</AvatarFallback>
-          </Avatar>
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuLabel>Minha Conta</DropdownMenuLabel>
-        <DropdownMenuLabel className="font-normal text-xs truncate max-w-[200px]">
-          {user.email}
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => router.push('/dashboard')}>
-          Dashboard
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => router.push('/profile')}>
-          Perfil
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          onClick={handleSignOut}
-          disabled={isLoading}
-          className="text-red-500 focus:text-red-500"
-        >
-          {isLoading ? 'Saindo...' : 'Sair'}
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <ClerkUserButton
+      afterSignOutUrl="/"
+      appearance={{
+        elements: {
+          userButtonAvatarBox: 'h-8 w-8',
+        },
+      }}
+    />
   );
-} 
+}
