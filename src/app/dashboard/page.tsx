@@ -1,23 +1,21 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { MarketOverview } from '@/components/dashboard/market-overview';
-import { ETFTable } from '@/components/dashboard/etf-table';
-import { FilterSidebar } from '@/components/dashboard/filter-sidebar';
-import { ChatWidget } from '@/components/chat/chat-widget';
-import { Button } from '@/components/ui/button';
-import { MessageSquare, X } from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { UserButton } from '@/components/user-button';
-import { useAuth } from '@/lib/hooks/useAuth';
+import { useState } from "react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import MarketOverview from "@/components/dashboard/market-overview";
+import { ETFTable } from "@/components/dashboard/etf-table";
+import { FilterSidebar } from "@/components/dashboard/filter-sidebar";
+import { ChatWidget } from "@/components/chat/chat-widget";
+import { Button } from "@/components/ui/button";
+import { MessageSquare, X } from "lucide-react";
+import { UserButton } from "@clerk/nextjs"; // Import Clerk's UserButton
 
 export default function DashboardPage() {
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState("overview");
   const [showChat, setShowChat] = useState(false);
   const [filters, setFilters] = useState<Record<string, any>>({});
-  const { user } = useAuth();
+  // Removed legacy useAuth hook and user state
 
   const handleApplyFilters = (newFilters: Record<string, any>) => {
     setFilters(newFilters);
@@ -27,16 +25,17 @@ export default function DashboardPage() {
     <div className="container mx-auto p-4 md:p-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
         <h1 className="text-2xl md:text-3xl font-bold">Dashboard de ETFs</h1>
-        {user && <UserButton user={user} />}
+        {/* Use Clerk's UserButton directly */}
+        <UserButton afterSignOutUrl="/" />
       </div>
 
       <Tabs defaultValue="overview" onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-5 mb-6">
           <TabsTrigger value="overview">Visão Geral</TabsTrigger>
           <TabsTrigger value="explorer">Explorador</TabsTrigger>
-          <TabsTrigger value="compare" disabled>Comparador</TabsTrigger> {/* Desabilitado por enquanto */}
-          <TabsTrigger value="screener" disabled>Screener</TabsTrigger> {/* Desabilitado por enquanto */}
-          <TabsTrigger value="watchlist" disabled>Watchlist</TabsTrigger> {/* Desabilitado por enquanto */}
+          <TabsTrigger value="compare" disabled>Comparador</TabsTrigger>
+          <TabsTrigger value="screener" disabled>Screener</TabsTrigger>
+          <TabsTrigger value="watchlist" disabled>Watchlist</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="mt-6 space-y-6">
@@ -47,6 +46,7 @@ export default function DashboardPage() {
                 <CardDescription>Melhor desempenho recente</CardDescription>
               </CardHeader>
               <CardContent>
+                {/* TODO: Add loading/error states for MarketOverview */}
                 <MarketOverview region="global" />
               </CardContent>
             </Card>
@@ -57,6 +57,7 @@ export default function DashboardPage() {
                 <CardDescription>Visão geral do mercado americano</CardDescription>
               </CardHeader>
               <CardContent>
+                {/* TODO: Add loading/error states for MarketOverview */}
                 <MarketOverview region="us" />
               </CardContent>
             </Card>
@@ -68,6 +69,7 @@ export default function DashboardPage() {
               <CardDescription>ETFs mais negociados globalmente</CardDescription>
             </CardHeader>
             <CardContent>
+              {/* TODO: Add loading/error states for ETFTable */}
               <ETFTable category="all" region="global" limit={10} />
             </CardContent>
           </Card>
@@ -85,6 +87,7 @@ export default function DashboardPage() {
                    <CardDescription>Encontre ETFs com base nos seus critérios</CardDescription>
                  </CardHeader>
                  <CardContent>
+                   {/* TODO: Add loading/error states for ETFTable */}
                    <ETFTable 
                      category={filters.category || 'all'} 
                      region={filters.region || 'global'} 

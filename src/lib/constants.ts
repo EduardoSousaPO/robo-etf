@@ -3,6 +3,10 @@
 export const FMP_API_KEY = process.env.FMP_API_KEY || '';
 export const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 
+// URL da API Python
+export const PYTHON_API_URL = process.env.NEXT_PUBLIC_PYTHON_API_URL || 'http://localhost:5000';
+console.log(`API Python configurada em: ${PYTHON_API_URL}`);
+
 // Constantes do Supabase
 // Em produção, estas devem apontar para seu projeto Supabase de produção
 export const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://iikdiavzocnpspebjasp.supabase.co';

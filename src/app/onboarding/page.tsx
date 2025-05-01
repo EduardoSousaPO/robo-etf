@@ -1,153 +1,210 @@
-'use client';
+// src/app/onboarding/page.tsx
+"use client";
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { UserButton } from '@/components/user-button';
-import { useAuth } from '@/lib/hooks/useAuth';
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useUser } from "@clerk/nextjs"; // Use Clerk hook
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  RadioGroup,
+  RadioGroupItem,
+} from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
+import { useToast } from "@/components/ui/use-toast";
+import { Loader2 } from "lucide-react";
+
+// Questions for risk assessment
+const questions = [
+  {
+    id: "q1",
+    text: "Qual é o seu principal objetivo ao investir com o Robo-ETF?",
+    options: [
+      { value: 1, label: "Preservar meu capital com risco mínimo." },
+      { value: 2, label: "Gerar renda estável com baixo risco." },
+      { value: 3, label: "Equilibrar crescimento e segurança." },
+      { value: 4, label: "Buscar crescimento significativo, aceitando maior volatilidade." },
+      { value: 5, label: "Maximizar o retorno potencial, mesmo com alto risco." },
+    ],
+  },
+  {
+    id: "q2",
+    text: "Por quanto tempo você pretende manter seus investimentos?",
+    options: [
+      { value: 1, label: "Menos de 1 ano" },
+      { value: 2, label: "1 a 3 anos" },
+      { value: 3, label: "3 a 5 anos" },
+      { value: 4, label: "5 a 10 anos" },
+      { value: 5, label: "Mais de 10 anos" },
+    ],
+  },
+  {
+    id: "q3",
+    text: "Como você reagiria a uma queda de 20% no valor da sua carteira em um curto período?",
+    options: [
+      { value: 1, label: "Venderia tudo imediatamente para evitar mais perdas." },
+      { value: 2, label: "Venderia parte dos investimentos." },
+      { value: 3, label: "Manteria a carteira, mas ficaria preocupado." },
+      { value: 4, label: "Manteria a carteira e consideraria investir mais." },
+      { value: 5, label: "Veria como uma oportunidade e investiria mais." },
+    ],
+  },
+  {
+    id: "q4",
+    text: "Qual sua experiência com investimentos em renda variável (ações, ETFs)?",
+    options: [
+      { value: 1, label: "Nenhuma experiência." },
+      { value: 2, label: "Pouca experiência, investi algumas vezes." },
+      { value: 3, label: "Experiência moderada, invisto regularmente." },
+      { value: 4, label: "Experiente, acompanho o mercado de perto." },
+      { value: 5, label: "Muito experiente, utilizo estratégias avançadas." },
+    ],
+  },
+];
 
 export default function OnboardingPage() {
-  const [activeTab, setActiveTab] = useState('what');
+  const [answers, setAnswers] = useState<Record<string, number>>({});
+  const [loading, setLoading] = useState(false);
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, isLoaded } = useUser(); // Use Clerk hook
+  const { toast } = useToast();
+
+  const handleAnswerChange = (questionId: string, value: string) => {
+    setAnswers((prev) => ({ ...prev, [questionId]: parseInt(value) }));
+  };
+
+  const calculateRiskScore = (): number => {
+    const totalScore = Object.values(answers).reduce((sum, score) => sum + score, 0);
+    const averageScore = totalScore / questions.length;
+    // Simple average rounded - adjust logic as needed for better scoring
+    return Math.max(1, Math.min(5, Math.round(averageScore)));
+  };
+
+  const handleSubmit = async () => {
+    if (Object.keys(answers).length !== questions.length) {
+      toast({
+        title: "Questionário Incompleto",
+        description: "Por favor, responda todas as perguntas.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!user) {
+      toast({
+        title: "Erro de Autenticação",
+        description: "Usuário não encontrado. Por favor, faça login novamente.",
+        variant: "destructive",
+      });
+      router.push("/sign-in"); // Redirect to sign-in if user is somehow lost
+      return;
+    }
+
+    setLoading(true);
+    const riskScore = calculateRiskScore();
+    const userName = user.fullName || user.firstName || user.emailAddresses[0]?.emailAddress || "Usuário"; // Get name from Clerk
+
+    try {
+      const response = await fetch("/api/profile", { // Use a dedicated profile API route
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          // Authorization header will be handled by Clerk middleware/backend automatically if needed
+        },
+        body: JSON.stringify({
+          userId: user.id,
+          name: userName,
+          riskScore: riskScore,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Falha ao salvar perfil");
+      }
+
+      toast({
+        title: "Perfil Salvo!",
+        description: `Seu perfil de risco (${riskScore}) foi definido com sucesso.`,
+      });
+
+      // Redirect to dashboard or portfolio page
+      router.push("/dashboard");
+
+    } catch (error: any) {
+      console.error("Erro ao salvar perfil:", error);
+      toast({
+        title: "Erro ao Salvar Perfil",
+        description: error.message || "Não foi possível salvar seu perfil. Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!isLoaded) {
+    // Optional: Add a loading skeleton
+    return (
+      <div className="container flex min-h-screen items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!user && isLoaded) {
+    // Should be redirected by middleware, but handle just in case
+    router.push("/sign-in");
+    return null;
+  }
 
   return (
-    <div className="container max-w-5xl mx-auto px-4 py-8">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold">Como Funciona o Robo-ETF</h1>
-        {user ? (
-          <div className="flex items-center gap-4">
-            <Button variant="outline" onClick={() => router.push('/dashboard')}>
-              Dashboard
-            </Button>
-            <UserButton user={user} />
-          </div>
-        ) : (
-          <Button onClick={() => router.push('/sign-up')}>
-            Criar Conta
+    <div className="container mx-auto max-w-3xl px-4 py-12">
+      <Card>
+        <CardHeader>
+          <CardTitle>Questionário de Perfil de Risco</CardTitle>
+          <CardDescription>
+            Responda às perguntas abaixo para determinarmos a melhor estratégia de
+            investimento para você.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-8">
+          {questions.map((q) => (
+            <div key={q.id} className="space-y-3">
+              <Label className="text-base font-medium">{q.text}</Label>
+              <RadioGroup
+                value={answers[q.id]?.toString()}
+                onValueChange={(value) => handleAnswerChange(q.id, value)}
+                className="space-y-2"
+              >
+                {q.options.map((opt) => (
+                  <div key={opt.value} className="flex items-center space-x-2">
+                    <RadioGroupItem value={opt.value.toString()} id={`${q.id}-${opt.value}`} />
+                    <Label htmlFor={`${q.id}-${opt.value}`} className="font-normal">
+                      {opt.label}
+                    </Label>
+                  </div>
+                ))}
+              </RadioGroup>
+            </div>
+          ))}
+        </CardContent>
+        <CardFooter>
+          <Button onClick={handleSubmit} disabled={loading} className="w-full">
+            {loading ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : null}
+            {loading ? "Salvando..." : "Concluir e Ver Carteira"}
           </Button>
-        )}
-      </div>
-
-      <Tabs defaultValue="what" value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="what">O Que É</TabsTrigger>
-          <TabsTrigger value="how">Como Funciona</TabsTrigger>
-          <TabsTrigger value="why">Por Que Usar</TabsTrigger>
-        </TabsList>
-        <TabsContent value="what" className="mt-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>O Que é o Robo-ETF?</CardTitle>
-              <CardDescription>
-                Uma solução para investir globalmente com eficiência e baixo custo
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p>
-                O Robo-ETF é uma plataforma que utiliza <strong>algoritmos avançados</strong> para criar carteiras de ETFs globais personalizadas, alinhadas com seu perfil de risco e objetivos financeiros.
-              </p>
-              <p>
-                Através de ETFs (Exchange Traded Funds), você investe em:
-              </p>
-              <ul className="list-disc pl-6 space-y-2">
-                <li>Mercados de ações globais (EUA, Europa, Ásia, Emergentes)</li>
-                <li>Renda fixa internacional</li>
-                <li>Commodities e metais preciosos</li>
-                <li>Setores específicos (Tecnologia, Saúde, Finanças, etc.)</li>
-              </ul>
-              <p>
-                Nossa tecnologia seleciona os melhores ETFs e determina a alocação ideal para atingir o máximo retorno possível para seu nível de risco.
-              </p>
-            </CardContent>
-            <CardFooter>
-              <Button onClick={() => setActiveTab('how')} className="w-full">
-                Próximo: Como Funciona
-              </Button>
-            </CardFooter>
-          </Card>
-        </TabsContent>
-        <TabsContent value="how" className="mt-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Como Funciona o Robo-ETF</CardTitle>
-              <CardDescription>
-                Um processo simples em apenas 3 passos
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">1. Defina seu Perfil de Risco</h3>
-                <p>
-                  Responda algumas perguntas sobre seus objetivos financeiros, horizonte de investimento e tolerância a risco. Nosso algoritmo calculará seu perfil ideal.
-                </p>
-              </div>
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">2. Receba sua Carteira Personalizada</h3>
-                <p>
-                  Com base no seu perfil, nosso algoritmo criará uma carteira diversificada de ETFs otimizada para maximizar retornos e minimizar riscos.
-                </p>
-              </div>
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">3. Implemente e Acompanhe</h3>
-                <p>
-                  Siga as recomendações em sua corretora e acompanhe o desempenho da sua carteira. Quando necessário, sugerimos rebalanceamentos para manter a estratégia alinhada.
-                </p>
-              </div>
-            </CardContent>
-            <CardFooter>
-              <Button onClick={() => setActiveTab('why')} className="w-full">
-                Próximo: Por Que Usar
-              </Button>
-            </CardFooter>
-          </Card>
-        </TabsContent>
-        <TabsContent value="why" className="mt-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Por Que Usar o Robo-ETF</CardTitle>
-              <CardDescription>
-                Benefícios para sua estratégia de investimentos
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <h3 className="text-lg font-semibold">Diversificação Global</h3>
-                  <p>
-                    Acesso a mercados internacionais que podem oferecer retornos quando o mercado brasileiro está em baixa.
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <h3 className="text-lg font-semibold">Baixo Custo</h3>
-                  <p>
-                    ETFs têm taxas significativamente menores que fundos ativos, preservando mais do seu capital para crescimento.
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <h3 className="text-lg font-semibold">Eficiência Tributária</h3>
-                  <p>
-                    Estratégias otimizadas para minimizar impactos fiscais e maximizar retornos líquidos.
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <h3 className="text-lg font-semibold">Baseado em Ciência</h3>
-                  <p>
-                    Utiliza Teoria Moderna de Portfólio e décadas de pesquisa acadêmica para otimização de carteiras.
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-            <CardFooter>
-              <Button onClick={() => router.push('/sign-up')} className="w-full">
-                Começar Agora
-              </Button>
-            </CardFooter>
-          </Card>
-        </TabsContent>
-      </Tabs>
+        </CardFooter>
+      </Card>
     </div>
   );
 }

@@ -1,109 +1,123 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { generatePortfolioPDF } from '@/lib/pdf-generator';
-import { createClient } from '@supabase/supabase-js';
-import { verifyUserToken } from '@/lib/auth';
+import { NextRequest, NextResponse } from "next/server";
+import { generatePortfolioPDF } from "@/lib/pdf-generator";
+import { createClient } from "@supabase/supabase-js";
+import { getAuth } from "@clerk/nextjs/server"; // Use Clerk server-side auth
+import { Portfolio as PrismaPortfolio } from "@prisma/client"; // Use Prisma type for consistency
+import { SUPABASE_URL, SUPABASE_SERVICE_KEY } from "@/lib/constants"; // Use constants for keys
 
-// Função local para criar cliente de serviço do Supabase
-function createServiceClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://iikdiavzocnpspebjasp.supabase.co';
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlpa2RpYXZ6b2NucHNwZWJqYXNwIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0NTYxNzU3NCwiZXhwIjoyMDYxMTkzNTc0fQ.bwQZqwTpEvmFdVMzgNxPovEvCaTHInBoXEKfFTTquJg';
-  
-  return createClient(supabaseUrl, supabaseServiceKey, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
-  });
-}
+// Create a dedicated Supabase client for Storage using service key
+// Ensure RLS policies on the bucket allow uploads based on user auth if needed,
+// or rely on the service key's bypass capabilities (use with caution).
+const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false,
+  },
+});
 
-// Tipo para a carteira otimizada (copiado de pdf-generator.ts)
-type Portfolio = {
-  weights: Record<string, number>;
-  metrics: {
-    return: number;
-    volatility: number;
-    sharpe: number;
-  };
-  rebalance_date: string;
-};
-
+// Type for the request body (matching client-side structure)
+// Use PrismaPortfolio['weights'] and PrismaPortfolio['metrics'] if they are JsonValue
 interface PDFRequest {
-  portfolio: Portfolio;
+  portfolio: {
+    weights: Record<string, number>;
+    metrics: {
+      expectedReturn: number;
+      risk: number;
+      sharpeRatio: number;
+    };
+    rebalance_date: string; // Assuming string from client
+  };
   riskScore: number;
   explanation: string;
 }
 
 export async function POST(request: NextRequest) {
   try {
-    // Extrair o token do cabeçalho de autorização
-    const authHeader = request.headers.get('Authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Token de autenticação inválido' }, { status: 401 });
+    // Verify user authentication using Clerk
+    const { userId } = getAuth(request);
+    if (!userId) {
+      return NextResponse.json({ error: "Usuário não autenticado" }, { status: 401 });
     }
-    
-    const token = authHeader.split(' ')[1];
-    
-    // Verificar a autenticação do usuário
-    const user = await verifyUserToken(token);
-    
-    if (!user) {
-      return NextResponse.json({ error: 'Usuário não autenticado' }, { status: 401 });
-    }
-    
-    const userId = user.id;
-    
-    // Obter dados da carteira
-    const { portfolio, riskScore, explanation } = await request.json() as PDFRequest;
-    
+
+    // Get data from request body
+    const { portfolio, riskScore, explanation } = (await request.json()) as PDFRequest;
+
     if (!portfolio || !riskScore || !explanation) {
       return NextResponse.json(
-        { error: 'Dados incompletos' },
+        { error: "Dados incompletos para gerar PDF" },
         { status: 400 }
       );
     }
-    
-    // Gerar PDF
-    const pdfBytes = await generatePortfolioPDF(portfolio, riskScore, explanation);
-    
-    // Nome do arquivo
-    const fileName = `roboetf_carteira_${userId}_${new Date().toISOString().split('T')[0]}.pdf`;
-    
-    // Criar cliente Supabase com chave de serviço
-    const supabase = createServiceClient();
-    
-    // Salvar no Supabase Storage
-    const { error: uploadError } = await supabase
-      .storage
-      .from('portfolio-pdfs')
-      .upload(fileName, pdfBytes, {
-        contentType: 'application/pdf',
-        upsert: true
+
+    // Adapt portfolio metrics names if needed for pdf-generator
+    const portfolioForPDF = {
+      weights: portfolio.weights,
+      metrics: {
+        return: portfolio.metrics.expectedReturn,
+        volatility: portfolio.metrics.risk,
+        sharpe: portfolio.metrics.sharpeRatio,
+      },
+      rebalance_date: portfolio.rebalance_date,
+    };
+
+    // Generate PDF bytes
+    const pdfBytes = await generatePortfolioPDF(
+      portfolioForPDF,
+      riskScore,
+      explanation
+    );
+
+    // Define file name
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const fileName = `carteira-robo-etf-${userId}-${timestamp}.pdf`;
+    const filePath = `${userId}/${fileName}`; // Store in user-specific folder
+
+    // Upload PDF to Supabase Storage
+    console.log(`Fazendo upload do PDF para: portfolio-pdfs/${filePath}`);
+    const { error: uploadError } = await supabaseAdmin.storage
+      .from("portfolio-pdfs") // Bucket name from setup
+      .upload(filePath, pdfBytes, {
+        contentType: "application/pdf",
+        upsert: false, // Avoid overwriting accidentally, generate unique names
       });
-    
+
     if (uploadError) {
-      console.error('Erro ao salvar PDF:', uploadError);
+      console.error("Erro ao fazer upload do PDF para o Supabase Storage:", uploadError);
       return NextResponse.json(
-        { error: 'Erro ao salvar PDF' },
+        { error: `Erro ao salvar PDF: ${uploadError.message}` },
         { status: 500 }
       );
     }
-    
-    // Obter URL pública
-    const { data: urlData } = await supabase
-      .storage
-      .from('portfolio-pdfs')
-      .getPublicUrl(fileName);
-    
+    console.log(`PDF carregado com sucesso: ${filePath}`);
+
+    // Get public URL for the uploaded file
+    const { data: urlData } = supabaseAdmin.storage
+      .from("portfolio-pdfs")
+      .getPublicUrl(filePath);
+
+    if (!urlData?.publicUrl) {
+        console.error("Não foi possível obter a URL pública para o PDF:", filePath);
+        // Return success but without URL, or handle as error?
+        // For now, return success but log the issue.
+        return NextResponse.json({
+            success: true,
+            message: "PDF gerado e salvo, mas URL pública não disponível.",
+            filePath: filePath // Provide path for potential manual retrieval
+        });
+    }
+
+    console.log(`URL pública do PDF: ${urlData.publicUrl}`);
+
     return NextResponse.json({
       success: true,
-      url: urlData.publicUrl
+      url: urlData.publicUrl,
     });
+
   } catch (error: unknown) {
-    console.error('Erro ao gerar PDF:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Erro ao gerar PDF';
-    return NextResponse.json(
-      { error: errorMessage },
-      { status: 500 }
-    );
+    console.error("Erro inesperado na API de geração de PDF:", error);
+    const errorMessage =
+      error instanceof Error ? error.message : "Erro interno ao gerar PDF";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
+

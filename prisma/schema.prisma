@@ -1,0 +1,48 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Modelo para a tabela de perfis de usuários
+// A tabela auth.users é gerenciada pelo Supabase/Clerk, então não a modelamos aqui.
+// Apenas referenciamos o ID.
+model Profile {
+  id                  String    @id @db.Uuid // Referencia auth.users(id)
+  name                String?
+  risk_score          Int?      @map("risk_score")
+  created_at          DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  subscription_status String?   // free | premium - Usar String por simplicidade ou Enum se preferir
+  subscription_id     String?   @map("subscription_id")
+
+  // Relação com Portfolios
+  portfolios Portfolio[]
+
+  @@map("profiles")
+}
+
+// Modelo para a tabela de carteiras de investimento
+model Portfolio {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id        String   @db.Uuid @map("user_id")
+  weights        Json     // {"QQQ":0.15,"VTI":0.20,...}
+  metrics        Json     // ret, vol, sharpe
+  rebalance_date DateTime? @map("rebalance_date") @db.Date
+  created_at     DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relação com Profile (Usuário)
+  user Profile @relation(fields: [user_id], references: [id])
+
+  @@index([user_id]) // Adiciona índice para user_id
+  @@map("portfolios")
+}
+

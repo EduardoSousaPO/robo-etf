@@ -1,40 +1,36 @@
 import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
-import { getAuth } from '@clerk/nextjs/server';
+import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 
 // Rotas que não requerem autenticação
-const publicRoutes = ['/', '/sign-in*', '/sign-up*', '/api/webhook*', '/api/mercadopago/webhook*'];
+const isPublicRoute = createRouteMatcher([
+  '/',
+  '/sign-in(.*)',
+  '/sign-up(.*)',
+  '/api/webhook(.*)',
+  '/api/mercadopago/webhook(.*)'
+]);
 
-// Verifica se a rota atual é pública
-function isPublicRoute(pathname: string): boolean {
-  return publicRoutes.some((route) => {
-    if (route.endsWith('*')) {
-      return pathname.startsWith(route.replace('*', ''));
-    }
-    return pathname === route;
-  });
-}
-
-export default function middleware(request: NextRequest) {
-  const { userId } = getAuth(request);
-  const pathname = request.nextUrl.pathname;
-
-  // Redirecionar usuários não autenticados tentando acessar rotas protegidas
-  if (!userId && !isPublicRoute(pathname)) {
-    const redirectUrl = new URL('/sign-in', request.url);
-    redirectUrl.searchParams.set('redirect_url', request.url);
-    return NextResponse.redirect(redirectUrl);
+export default clerkMiddleware(async (auth, req) => {
+  // Se não for uma rota pública, proteger
+  if (!isPublicRoute(req)) {
+    await auth.protect();
   }
 
   // Redirecionar usuários autenticados tentando acessar páginas de autenticação
-  if (userId && (pathname === '/sign-in' || pathname === '/sign-up')) {
-    return NextResponse.redirect(new URL('/dashboard', request.url));
+  const { userId } = await auth();
+  if (userId && (req.nextUrl.pathname === '/sign-in' || req.nextUrl.pathname === '/sign-up')) {
+    return NextResponse.redirect(new URL('/dashboard', req.url));
   }
-
-  // Permitir a solicitação para continuar
+  
+  // Permitir acesso para todas as rotas
   return NextResponse.next();
-}
+});
 
 export const config = {
-  matcher: ['/((?!.+\\.[\\w]+$|_next).*)', '/', '/(api|trpc)(.*)'],
+  matcher: [
+    // Ignorar arquivos estáticos e internos do Next.js
+    '/((?!_next/static|_next/image|favicon.ico).*)',
+    // Sempre executar para rotas API
+    '/(api|trpc)(.*)'
+  ],
 };

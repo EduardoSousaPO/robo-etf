@@ -1,0 +1,181 @@
+# ROBO-ETF: APLICATIVO DE CARTEIRAS INTELIGENTES DE ETFs
+
+## O QUE É O APLICATIVO
+
+O Robo-ETF é um aplicativo SaaS (Software as a Service) completo projetado para criar carteiras inteligentes de ETFs (Exchange Traded Funds). O sistema permite aos usuários:
+
+1. Visualizar ETFs de diferentes regiões (Global, EUA, Brasil, Europa, Ásia)
+2. Analisar o desempenho de diferentes ETFs
+3. Comparar dados de mercado em tempo real
+4. Criar carteiras personalizadas de ETFs com base em critérios de investimento
+
+## DADOS DE MERCADO FINANCEIRO UTILIZADOS
+
+O aplicativo busca os seguintes tipos de dados nas APIs de mercado financeiro:
+
+1. **Lista de ETFs disponíveis**: Símbolos, nomes, preços e exchanges
+2. **Cotações de ETFs**: Preços atuais, variações percentuais, volumes de negociação
+3. **Holdings de ETFs**: Composição de cada ETF (ativos, pesos, setores)
+4. **Dados históricos**: Preços ao longo do tempo para análise de tendências
+5. **Dados regionais**: ETFs específicos de diferentes mercados globais
+
+## APIS UTILIZADAS E SUAS LIMITAÇÕES
+
+O sistema tenta obter dados de várias fontes em ordem de preferência:
+
+### 1. yfinance (API Python)
+- **Função**: API principal para obter dados em tempo real do Yahoo Finance
+- **Dados buscados**: Lista de ETFs, cotações, holdings, dados históricos
+- **Problemas enfrentados**:
+  - Limitações de requisições: Yahoo Finance limita o número de requisições por IP
+  - Bloqueios temporários: Uso intensivo pode resultar em bloqueio temporário do IP
+  - Dados incompletos: Alguns ETFs não retornam informações completas
+  - Timeouts: Muitas requisições simultâneas podem resultar em timeouts
+  - Alterações na estrutura da API: O Yahoo Finance pode alterar a estrutura da API sem aviso
+
+### 2. Yahoo Finance Official API (Fallback)
+- **Função**: Fonte secundária quando o yfinance falha
+- **Dados buscados**: Os mesmos que o yfinance
+- **Problemas enfrentados**:
+  - Limitações de acesso: Requer autenticação para uso extensivo
+  - Quotas de uso: Limitado em planos gratuitos
+
+### 3. Financial Modeling Prep (FMP) API (Fallback final)
+- **Função**: Última opção quando as outras fontes falham
+- **Dados buscados**: Cotações e informações básicas de ETFs
+- **Problemas enfrentados**:
+  - Requer chave de API: Precisa de registro e pode ter custos
+  - Cobertura limitada: Nem todos os ETFs globais estão disponíveis
+
+## ESTRATÉGIA DE RESILIÊNCIA IMPLEMENTADA
+
+Para garantir uma experiência consistente mesmo quando as APIs falham, implementamos:
+
+1. **Sistema de Camadas de Fallback**:
+   - Tenta primeiro o yfinance
+   - Se falhar, usa Yahoo Finance Official
+   - Se ambos falharem, tenta FMP
+   - Em último caso, usa dados estáticos
+
+2. **Dados Simulados**:
+   - Quando nenhuma API retorna dados, o sistema usa dados simulados
+   - Uma indicação visual "(Dados simulados)" aparece na interface
+   - Os dados simulados são baseados em valores realistas de mercado
+
+3. **Cache Local**:
+   - Dados obtidos são armazenados em cache por 15 minutos
+   - Reduz a necessidade de requisições repetidas
+   - Melhora o desempenho e reduz a chance de bloqueios
+
+## ESTÁGIO ATUAL DO PROJETO (ATUALIZADO)
+
+### Implementação do Microserviço com FMP API
+
+Recentemente, o projeto passou por uma refatoração significativa para melhorar a confiabilidade da obtenção de dados de mercado. As principais mudanças incluem:
+
+1. **Microserviço Python Dedicado**:
+   - Foi implementado um microserviço Python dedicado (`python-api/app.py`) que serve como um intermediário entre o frontend e as APIs externas
+   - Este microserviço expõe endpoints RESTful para buscar dados de ETFs
+   - Gerencia conexões com a API FMP de forma eficiente
+
+2. **Uso da API FMP como Fonte Principal**:
+   - A API Financial Modeling Prep (FMP) agora está configurada como fonte principal de dados
+   - Configuração da chave de API FMP no arquivo `.env` do microserviço
+   - Endpoints implementados:
+     - `/api/etf/list` - Lista todos os ETFs disponíveis
+     - `/api/etf/quotes` - Cotações atuais de ETFs específicos
+     - `/api/etf/holdings/{symbol}` - Composição de um ETF específico
+     - `/api/etf/historical/{symbol}` - Dados históricos de preços
+     - `/api/etf/region/{region}` - ETFs agrupados por região
+
+3. **Sistema de Logs e Monitoramento**:
+   - Implementação de logs detalhados para monitorar o uso da API e diagnosticar problemas
+   - Verificação de saúde do serviço via endpoint `/api/health`
+
+4. **Gestão de Erros**:
+   - Tratamento adequado de erros da API FMP
+   - Verificação da validade da chave API antes de fazer requisições
+   - Respostas de erro informativas para o frontend
+
+### Erros Comuns e Solução
+
+O erro mais comum enfrentado é a configuração incorreta da chave API FMP. O sistema verifica se:
+
+1. A chave API está presente no arquivo `.env`
+2. A chave não é o valor padrão/placeholder ("sua-chave-api-fmp-aqui")
+
+Para resolver problemas com a API:
+
+1. Verifique se o arquivo `.env` na pasta `python-api` contém uma chave FMP válida
+2. Confirme que o serviço Python está rodando na porta 5000
+3. Verifique os logs do servidor para mensagens de erro específicas
+
+#### Erro 401 da API FMP
+
+Atualmente, ao tentar acessar os endpoints da API FMP, estamos recebendo um erro 401 (Não Autorizado). Este erro indica que:
+
+1. A chave API FMP pode estar expirada
+2. A chave API FMP pode ter sido invalidada
+3. O serviço FMP pode requerer um plano pago para acessar os endpoints específicos
+
+Próximos passos para resolver este problema:
+1. Obter uma nova chave API FMP através do site oficial (https://financialmodelingprep.com/)
+2. Atualizar o arquivo `.env` com a nova chave
+3. Reiniciar o servidor Python para aplicar a mudança
+4. Verificar os logs para confirmar o status da autenticação
+
+## EXECUTANDO O PROJETO
+
+Para executar o projeto corretamente:
+
+1. **Microserviço Python**:
+   - Navegue até a pasta `python-api`
+   - Configure sua chave FMP no arquivo `.env` (FMP_API_KEY=sua-chave-aqui)
+   - Execute `python app.py`
+   - Isso iniciará o serviço na porta 5000
+
+2. **Frontend Next.js**:
+   - Na pasta raiz do projeto
+   - Execute `pnpm dev`
+   - Acesse o aplicativo em `http://localhost:3000`
+
+3. **Variáveis de ambiente**:
+   - Certifique-se de ter um arquivo `.env.local` na raiz com:
+   - `NEXT_PUBLIC_PYTHON_API_URL=http://localhost:5000`
+   - Outras variáveis de configuração do Clerk para autenticação
+
+## MELHORIAS FUTURAS
+
+- Implementar caching mais robusto no microserviço Python
+- Adicionar mais fontes de dados alternativas (Alpha Vantage, Polygon.io)
+- Melhorar o sistema de fallback com tentativas automatizadas
+- Implementar notificações quando os dados forem simulados
+- Adicionar mais informações sobre cada ETF (dividend yield, expense ratio, etc.)
+
+## RESUMO DA SITUAÇÃO ATUAL
+
+O projeto Robo-ETF passou por uma refatoração significativa para utilizar um microserviço Python dedicado como intermediário para as APIs de dados financeiros. Esta arquitetura traz mais robustez e flexibilidade para o sistema.
+
+### Status de Implementação:
+
+1. ✅ Microserviço Python implementado com Flask
+2. ✅ Configuração de ambiente com arquivo `.env` 
+3. ✅ Endpoints RESTful para buscar dados de ETFs
+4. ✅ Sistema de logs para monitoramento da API
+5. ❌ Erro 401 na API FMP - autenticação inválida
+
+### Próximos Passos Imediatos:
+
+1. Resolver o problema de autenticação com a API FMP:
+   - Obter uma chave API válida
+   - Verificar se a conta tem permissão para acessar os endpoints necessários
+   - Considerar o uso de um plano pago se necessário
+
+2. Implementar mecanismo de fallback para outras fontes de dados:
+   - Retomar a implementação do yfinance como alternativa
+   - Configurar a lógica de retry quando uma API falha
+
+3. Melhorar a documentação do projeto:
+   - Documentar os endpoints disponíveis
+   - Criar exemplos de uso
+   - Atualizações regulares do status do projeto 

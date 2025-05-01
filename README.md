@@ -1,239 +1,256 @@
-# Robo-ETF - Carteira Inteligente de ETFs
+# Robo-ETF - Carteira Inteligente de ETFs (Refatorado)
 
-Robo-ETF é uma aplicação SaaS que permite criar carteiras globais de ETFs alinhadas ao perfil de risco do usuário, otimizadas em custos e tributação, com relatório explicativo em português.
+Robo-ETF é uma aplicação SaaS que permite criar carteiras globais de ETFs alinhadas ao perfil de risco do usuário, otimizadas em custos e tributação, com relatório explicativo em português. Esta versão foi refatorada para maior robustez e manutenibilidade, utilizando Prisma para acesso ao banco de dados e Clerk para autenticação.
 
 ## Tecnologias Utilizadas
 
-- **Frontend**: Next.js 14 (App Router) + TypeScript + Tailwind + shadcn/ui
-- **Backend**: Node/Fastify (Edge-ready) + Supabase Postgres
+- **Frontend**: Next.js 14 (App Router) + TypeScript + Tailwind CSS + shadcn/ui
+- **Backend/API**: Next.js API Routes
+- **Banco de Dados**: Supabase (PostgreSQL) via **Prisma ORM**
 - **Autenticação**: Clerk (e-mail + Google)
 - **Dados Financeiros**: Financial Modeling Prep API (FMP)
-- **IA/LLM**: OpenAI (GPT-4o-mini) + function-calling
-- **PDFs**: react-pdf / @react-pdf/renderer
+- **IA/LLM**: OpenAI (GPT-4o-mini)
+- **Geração de PDF**: `pdf-lib`
+- **Armazenamento de PDF**: Supabase Storage
 - **Pagamentos**: Mercado Pago Subscriptions
-- **Deploy**: Vercel (Preview + Prod)
-- **Observabilidade**: Vercel Analytics + PostHog
-- **CI/CD**: GitHub Actions (lint, test, build, deploy)
+- **Testes**: Vitest
+- **CI/CD**: GitHub Actions (configuração básica incluída)
 
 ## Funcionalidades Principais
 
-- Questionário de 6 perguntas para determinar o perfil de risco do usuário
-- Algoritmo Mean-Variance para otimização de carteiras de ETFs
-- Visualização da carteira com gráficos e métricas detalhadas
-- Exportação em CSV e PDF
-- Explicação da carteira gerada por IA em português
-- Rebalanceamento automático a cada 6 meses ou após drawdown > 15%
-- Plano Freemium com paywall após 1 carteira
+- Fluxo de Onboarding com questionário para determinar perfil de risco (1-5).
+- Geração de carteira otimizada via algoritmo Mean-Variance.
+- Dashboard com visão geral do mercado e tabela de ETFs filtrável.
+- Visualização detalhada da carteira (gráficos, alocação).
+- Exportação da carteira em CSV.
+- Geração e download de relatório da carteira em PDF.
+- Explicação da carteira gerada por IA (OpenAI).
+- Chat com IA para tirar dúvidas sobre ETFs (OpenAI).
+- Sistema de assinatura via Mercado Pago (Freemium com paywall após 1 carteira).
+- Rebalanceamento automático (via Cron Job - lógica implementada, requer configuração externa).
+- Verificação de Drawdown (via Cron Job - lógica implementada, requer configuração externa).
+- Gerenciamento de conta de usuário via Clerk.
 
 ## Configuração do Ambiente
 
-### Pré-requisitos
+Siga estes passos para configurar e executar o projeto localmente (testado com Cursor.ai e VS Code).
 
-- Node.js 20+
-- pnpm 10+
-- Conta Supabase (banco de dados)
-- Conta Clerk (autenticação)
-- Conta OpenAI
-- Conta Financial Modeling Prep
-- Conta Mercado Pago (para processamento de pagamentos)
+### 1. Pré-requisitos
 
-### Variáveis de Ambiente
+- **Node.js**: Versão 20 ou superior.
+- **pnpm**: Gerenciador de pacotes. Instale com `npm install -g pnpm`.
+- **Conta Supabase**: Para o banco de dados PostgreSQL e armazenamento de arquivos (Storage).
+- **Conta Clerk**: Para autenticação de usuários.
+- **Conta OpenAI**: Para as funcionalidades de IA (explicação e chat).
+- **Conta Financial Modeling Prep (FMP)**: Para dados financeiros de ETFs.
+- **Conta Mercado Pago**: Para processamento de pagamentos de assinatura (obtenha o Access Token).
+- **Git**: Para clonar o repositório.
 
-Crie um arquivo `.env.local` na raiz do projeto com as seguintes variáveis:
-
-```
-# API Keys
-FMP_API_KEY=sua_chave_fmp
-OPENAI_API_KEY=sua_chave_openai
-MERCADO_PAGO_ACCESS_TOKEN=seu_token_mercado_pago
-POSTHOG_KEY=sua_chave_posthog
-
-# Supabase (apenas banco de dados)
-NEXT_PUBLIC_SUPABASE_URL=sua_url_supabase
-NEXT_PUBLIC_SUPABASE_ANON_KEY=sua_chave_anon_supabase
-SUPABASE_SERVICE_ROLE_KEY=sua_chave_servico_supabase
-
-# Clerk (autenticação)
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=sua_chave_publica_clerk
-CLERK_SECRET_KEY=sua_chave_secreta_clerk
-CLERK_JWT_TEMPLATE_ID=seu_template_id_jwt
-CLERK_WEBHOOK_SECRET=seu_webhook_secret
-
-# App
-NEXT_PUBLIC_APP_URL=http://localhost:3000
-CRON_API_KEY=chave_para_endpoints_cron
-```
-
-### Instalação
+### 2. Clonar o Repositório
 
 ```bash
-# Clonar o repositório
-git clone https://github.com/seu-usuario/robo-etf.git
+git clone https://github.com/EduardoSousaPO/robo-etf.git # Ou o URL do seu fork
 cd robo-etf
+```
 
-# Instalar dependências
+### 3. Instalar Dependências
+
+Use o pnpm para instalar todas as dependências do projeto:
+
+```bash
 pnpm install
+```
 
-# Configurar banco de dados
-pnpm supabase:setup
+### 4. Configurar Variáveis de Ambiente
 
-# Iniciar servidor de desenvolvimento
+Crie um arquivo chamado `.env.local` na raiz do projeto. Copie o conteúdo abaixo e **substitua os valores placeholder** pelas suas chaves e URLs reais.
+
+```env
+# --- Banco de Dados (Supabase via Prisma) ---
+# Obtenha no Supabase: Project Settings > Database > Connection string > URI (use a versão Pooling)
+# IMPORTANTE: Substitua [YOUR-PASSWORD] pela sua senha do banco Supabase.
+DATABASE_URL="postgresql://postgres:[YOUR-PASSWORD]@db.<project-ref>.supabase.co:5432/postgres?pgbouncer=true"
+
+# --- Autenticação (Clerk) ---
+# Obtenha no dashboard do Clerk (clerk.com)
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
+CLERK_SECRET_KEY=sk_test_...
+# URLs de redirecionamento (ajuste se necessário, mas localhost:3000 é o padrão)
+NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
+NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
+NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=/dashboard
+NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/onboarding
+
+# --- Armazenamento de Arquivos (Supabase Storage) ---
+# Obtenha no Supabase: Project Settings > API
+NEXT_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
+SUPABASE_SERVICE_KEY=eyJ... # Use a chave "service_role" (Secret)
+
+# --- APIs Externas ---
+# Obtenha no site da Financial Modeling Prep
+FMP_API_KEY=sua_chave_fmp
+# Obtenha no site da OpenAI
+OPENAI_API_KEY=sk-...
+# Obtenha no dashboard do Mercado Pago (Credenciais de Produção ou Teste)
+MERCADO_PAGO_ACCESS_TOKEN=APP_USR-...
+
+# --- Configurações da Aplicação ---
+# URL base da sua aplicação em desenvolvimento
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+# Chave secreta para proteger os endpoints de Cron (crie uma chave segura)
+CRON_API_KEY=sua_chave_secreta_para_cron
+
+# --- Observabilidade (Opcional) ---
+# Obtenha no site do PostHog
+# POSTHOG_KEY=phc_...
+# NEXT_PUBLIC_POSTHOG_HOST=https://app.posthog.com
+```
+
+**Onde obter as chaves:**
+
+- **`DATABASE_URL`**: Vá ao seu projeto Supabase -> Project Settings -> Database -> Connection string. Copie a string `URI` e **substitua `[YOUR-PASSWORD]` pela senha que você definiu para o seu banco de dados Supabase**. Certifique-se de usar a URL com `pgbouncer=true`.
+- **Clerk Keys**: Crie uma aplicação no [Clerk](https://dashboard.clerk.com/) e encontre as chaves `Publishable key` e `Secret key` na seção API Keys.
+- **Supabase URL & Service Key**: Vá ao seu projeto Supabase -> Project Settings -> API. Copie a `Project URL` e a chave `service_role` (em Project API keys).
+- **FMP API Key**: Registre-se no [Financial Modeling Prep](https://site.financialmodelingprep.com/) e obtenha sua chave de API.
+- **OpenAI API Key**: Crie uma conta na [OpenAI Platform](https://platform.openai.com/) e gere uma chave de API.
+- **Mercado Pago Access Token**: Crie uma aplicação no [Mercado Pago Developers](https://www.mercadopago.com.br/developers) e obtenha seu `Access Token` (de produção ou teste).
+- **`CRON_API_KEY`**: Gere uma string aleatória segura e forte. Você usará essa chave para autorizar chamadas aos endpoints de Cron.
+
+### 5. Configurar Banco de Dados Supabase
+
+O schema do banco de dados é gerenciado pelo Prisma. As tabelas necessárias (`Profile`, `Portfolio`) já estão definidas em `prisma/schema.prisma`.
+
+1.  **Conecte-se ao seu banco de dados Supabase** usando uma ferramenta de sua preferência (como o SQL Editor do próprio Supabase, DBeaver, TablePlus, etc.) usando a URL de conexão direta (sem pgbouncer) encontrada em Project Settings > Database.
+2.  **Execute o script SQL inicial:** Copie o conteúdo do arquivo `migrations/0001_initial.sql` e execute-o no seu banco de dados Supabase. Isso criará as tabelas `profiles` e `portfolios`.
+
+    *Observação: Alternativamente, você poderia usar `npx prisma db push` após configurar o `.env.local`, mas executar o SQL manualmente garante que as políticas RLS e outras configurações específicas do Supabase sejam aplicadas corretamente se você as tiver definido.* 
+
+### 6. Configurar Supabase Storage
+
+Siga estes passos no painel do seu projeto Supabase:
+
+1.  Vá para a seção **Storage** (ícone de balde no menu lateral).
+2.  Clique em **"Create bucket"**.
+3.  Nomeie o bucket exatamente como: `portfolio-pdfs`.
+4.  **Desmarque** a opção "Public bucket".
+5.  Clique em **"Create bucket"**.
+6.  Clique no bucket `portfolio-pdfs` recém-criado.
+7.  Vá para a aba **"Policies"**.
+8.  Clique em **"New Policy"** -> **"Create a new policy from scratch"**.
+9.  **Policy name:** `Public Read Access for PDFs`
+10. **Allowed operations:** Marque apenas `SELECT`.
+11. **Target roles:** Marque `anon`.
+12. **Policy definition (SQL):** Verifique se o SQL gerado é semelhante a:
+    ```sql
+    CREATE POLICY "Public Read Access for PDFs" ON storage.objects FOR SELECT TO anon USING (bucket_id = 'portfolio-pdfs');
+    ```
+13. Clique em **"Review"** e depois em **"Save policy"**.
+
+### 7. Gerar Cliente Prisma
+
+Após configurar o `DATABASE_URL` no `.env.local`, gere o Prisma Client:
+
+```bash
+npx prisma generate
+```
+
+## Execução Local (Desenvolvimento)
+
+Com todas as configurações concluídas, inicie o servidor de desenvolvimento:
+
+```bash
 pnpm dev
 ```
 
-## Estrutura do Projeto
+A aplicação estará disponível em [http://localhost:3000](http://localhost:3000).
+
+**Para usuários do Cursor.ai:**
+
+- Abra o projeto no Cursor.ai.
+- Abra o terminal integrado (Terminal > New Terminal).
+- Siga os passos de instalação (`pnpm install`) e configuração (`.env.local`, banco de dados, storage) conforme descrito acima.
+- Execute `pnpm dev` no terminal.
+- Acesse [http://localhost:3000](http://localhost:3000) no seu navegador ou use a funcionalidade de preview/porta do Cursor.ai se disponível.
+
+## Execução de Testes
+
+Para rodar os testes unitários e de integração (usando Vitest):
+
+```bash
+pnpm test
+```
+
+## Estrutura do Projeto (Refatorado)
 
 ```
 robo-etf/
-├── migrations/              # Migrações do banco de dados Supabase
+├── migrations/              # Script SQL inicial para o banco
+├── prisma/                  # Configuração do Prisma ORM
+│   └── schema.prisma        # Definição do schema do banco de dados
 ├── public/                  # Arquivos estáticos
 ├── src/
-│   ├── app/                 # Páginas Next.js (App Router)
-│   │   ├── account/         # Página de conta do usuário
-│   │   ├── api/             # Rotas da API
-│   │   │   └── webhooks/    # Webhooks (Clerk, Mercado Pago)
-│   │   ├── onboarding/      # Questionário de perfil
-│   │   ├── portfolio/       # Visualização da carteira
+│   ├── app/                 # Páginas e Layouts (App Router)
+│   │   ├── (auth)/          # Rotas de autenticação (sign-in, sign-up)
+│   │   ├── (main)/          # Rotas principais após login (dashboard, portfolio, account)
+│   │   ├── api/             # Rotas da API (backend)
+│   │   │   ├── chat/
+│   │   │   ├── cron/        # Endpoints para Cron Jobs (rebalance, drawdown)
+│   │   │   ├── explain/
+│   │   │   ├── mercadopago/
+│   │   │   ├── optimize/
+│   │   │   ├── pdf/
+│   │   │   ├── profile/
+│   │   │   └── subscription/
+│   │   ├── onboarding/      # Página de onboarding após registro
+│   │   └── layout.tsx       # Layout principal
 │   │   └── page.tsx         # Landing page
 │   ├── components/          # Componentes React reutilizáveis
-│   │   ├── forms/           # Componentes de formulário
-│   │   └── ui/              # Componentes de UI
-│   └── lib/                 # Funções utilitárias
-│       ├── clerk.ts         # Integrações com Clerk
-│       ├── constants.ts     # Constantes da aplicação
-│       ├── fmp.ts           # Integração com Financial Modeling Prep
-│       ├── mercadopago.ts   # Integração com Mercado Pago
-│       ├── openai.ts        # Integração com OpenAI
-│       ├── optim.ts         # Algoritmo de otimização
-│       ├── pdf-generator.ts # Gerador de PDF
-│       ├── rebalance.ts     # Lógica de rebalanceamento
-│       └── supabase-client.ts # Cliente Supabase (banco de dados)
-└── tests/                   # Testes unitários e E2E
+│   │   ├── account/         # Componentes da página de conta
+│   │   ├── chat/            # Componente do widget de chat
+│   │   ├── dashboard/       # Componentes do dashboard (filtros, tabela, overview)
+│   │   ├── portfolio/       # Componente de exibição da carteira
+│   │   └── ui/              # Componentes base de UI (shadcn/ui)
+│   ├── lib/                 # Funções utilitárias e lógica de negócios
+│   │   ├── constants.ts     # Constantes
+│   │   ├── db.ts            # Instância global do Prisma Client
+│   │   ├── drawdown.ts      # Lógica de verificação de drawdown
+│   │   ├── etf-data.ts      # Funções para buscar dados de ETFs (simulado/real)
+│   │   ├── fmp.ts           # Integração com API FMP
+│   │   ├── mercadopago.ts   # Integração com Mercado Pago SDK
+│   │   ├── openai.ts        # Integração com OpenAI API
+│   │   ├── optim.ts         # Lógica de otimização de portfólio
+│   │   ├── pdf-generator.ts # Lógica de criação do conteúdo do PDF
+│   │   ├── rebalance.ts     # Lógica de rebalanceamento
+│   │   ├── repository.ts    # Funções de acesso ao banco de dados (usando Prisma)
+│   │   └── utils.ts         # Funções utilitárias gerais
+│   ├── hooks/               # Hooks React customizados
+│   ├── middleware.ts        # Middleware Next.js (para autenticação Clerk)
+│   └── types/               # Definições de tipos TypeScript
+├── tests/                   # Arquivos de teste (Vitest)
+├── .env.local               # Arquivo de variáveis de ambiente (NÃO COMMITAR)
+├── .gitignore               # Arquivos ignorados pelo Git
+├── components.json          # Configuração shadcn/ui
+├── next.config.mjs          # Configuração do Next.js
+├── package.json             # Dependências e scripts do projeto
+├── pnpm-lock.yaml           # Lockfile do pnpm
+├── postcss.config.js        # Configuração do PostCSS
+├── README.md                # Este arquivo
+├── tailwind.config.ts       # Configuração do Tailwind CSS
+└── tsconfig.json            # Configuração do TypeScript
 ```
 
-## Algoritmo de Otimização
+## Diretrizes de Implantação (Ex: Vercel)
 
-O algoritmo Mean-Variance implementado segue os seguintes passos:
-
-1. Seleciona 80 ETFs líquidos (volume > 10M/dia)
-2. Calcula retorno anualizado de 5 anos e desvio-padrão
-3. Define target return como 80% da média dos top 10 retornos
-4. Resolve min σ dado target return (restrição: 5% ≤ w ≤ 30%)
-5. Para perfis conservadores (risk_score ≤ 2), substitui ETFs US-domiciled por equivalentes IE-domiciled para otimização tributária
-
-## Endpoints da API
-
-### POST /api/optimize
-
-Otimiza uma carteira de ETFs com base no perfil de risco.
-
-**Request:**
-
-```json
-{
-  "riskScore": 3
-}
-```
-
-**Response:**
-
-```json
-{
-  "weights": {
-    "VTI": 0.25,
-    "QQQ": 0.2,
-    "...": "..."
-  },
-  "metrics": {
-    "return": 0.085,
-    "volatility": 0.15,
-    "sharpe": 0.43
-  },
-  "rebalance_date": "2025-10-25"
-}
-```
-
-### POST /api/explain
-
-Gera uma explicação da carteira usando IA.
-
-**Request:**
-
-```json
-{
-  "portfolio": {
-    "weights": { "..." },
-    "metrics": { "..." }
-  },
-  "riskScore": 3
-}
-```
-
-**Response:**
-
-```json
-{
-  "explanation": "Sua carteira foi otimizada para um perfil moderado..."
-}
-```
-
-### POST /api/pdf
-
-Gera um PDF da carteira.
-
-**Request:**
-
-```json
-{
-  "portfolio": { "..." },
-  "riskScore": 3,
-  "explanation": "..."
-}
-```
-
-**Response:**
-
-```json
-{
-  "success": true,
-  "url": "https://..."
-}
-```
-
-### POST /api/subscription
-
-Cria uma assinatura no Mercado Pago.
-
-**Response:**
-
-```json
-{
-  "success": true,
-  "subscription_id": "...",
-  "init_point": "https://..."
-}
-```
-
-## Testes
-
-```bash
-# Executar testes unitários
-pnpm test
-
-# Executar testes E2E
-pnpm test:e2e
-```
-
-## Deploy
-
-```bash
-# Build para produção
-pnpm build
-
-# Deploy na Vercel
-vercel --prod
-```
+1.  **Conecte seu Repositório:** Importe seu projeto Git (GitHub, GitLab, Bitbucket) para a Vercel.
+2.  **Configuração do Build:** A Vercel geralmente detecta o Next.js automaticamente.
+    - **Build Command:** `pnpm build` (ou deixe o padrão se a Vercel detectar `pnpm`)
+    - **Install Command:** `pnpm install`
+3.  **Variáveis de Ambiente:** Configure **todas** as variáveis de ambiente definidas no seu `.env.local` nas configurações do projeto na Vercel (Project Settings > Environment Variables). **Não use o arquivo `.env.local` em produção.**
+4.  **Banco de Dados:** Certifique-se de que a variável `DATABASE_URL` na Vercel aponte para o seu banco de dados Supabase de produção.
+5.  **Cron Jobs:** Para as funcionalidades de rebalanceamento e drawdown, configure Cron Jobs na Vercel (ou outro serviço de agendamento) para chamar os endpoints `/api/cron/rebalance` e `/api/cron/drawdown` periodicamente (ex: diariamente ou semanalmente). Lembre-se de incluir o `CRON_API_KEY` no cabeçalho `Authorization` das requisições: `Authorization: Bearer sua_chave_secreta_para_cron`.
+6.  **Webhooks:** Configure os webhooks do Clerk e do Mercado Pago para apontarem para os endpoints correspondentes na sua URL de produção (ex: `https://seu-dominio.com/api/clerk/webhook`, `https://seu-dominio.com/api/mercadopago/webhook`).
 
 ## Licença
 
-Todos os pacotes utilizados têm licença MIT/ISC ou equivalente gratuita para uso comercial.
+O código-fonte deste projeto é fornecido como está. As dependências utilizadas geralmente possuem licenças permissivas (MIT, ISC, etc.), mas verifique as licenças individuais se necessário para uso comercial.
+
